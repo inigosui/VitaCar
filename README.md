@@ -50,7 +50,7 @@ VitaCar.apk   -> para el móvil Android (8.0 o superior)
 4. En la app del móvil pulsa **Iniciar**. Abre VitaCar en la Vita: el punto «Móvil» de la
    barra lateral se pone verde.
 5. **Solo si la Vita se queda en «Buscando»:** en la app del móvil, al pulsar «Iniciar», aparece
-   «Direcciones de este móvil». Copia la que lleva `(wlan0)`, por ejemplo `192.168.1.92`. Crea
+   «Direcciones de este móvil». Copia la que lleva `(wlan0)`, por ejemplo `192.168.1.50`. Crea
    un archivo de texto `phone_ip.txt` que contenga solo esa IP y cópialo en la Vita (con
    VitaShell) a `ux0:data/VitaCar/phone_ip.txt`. Si el router le da otra IP al móvil más
    adelante, actualiza el archivo; para volver a la búsqueda automática, bórralo.
