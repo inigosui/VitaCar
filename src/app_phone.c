@@ -70,7 +70,7 @@ static void draw_status(const PhoneState *ps)
     }
 
     static const char *const STEPS[] = {
-        "1.  En el móvil, activa el punto de acceso WiFi en la banda de 2,4 GHz.",
+        "1.  Conecta el móvil y la Vita a la misma WiFi de 2,4 GHz (casa, punto de acceso…).",
         "2.  En la Vita: Ajustes › Red › Configuración de Wi-Fi › conéctate a esa red.",
         "3.  Abre VitaCar en el móvil y pulsa «Iniciar». Se conectará solo.",
     };

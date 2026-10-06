@@ -237,8 +237,8 @@ class MainActivity : Activity() {
         root.addView(header("Cómo conectar la Vita"))
         val steps = cardLayout()
         listOf(
-            "1. Activa el punto de acceso del móvil. En sus ajustes elige la banda de 2,4 GHz " +
-                "(la Vita no ve la de 5 GHz) y desactiva el apagado automático.",
+            "1. Conecta este móvil y la Vita a la misma WiFi de 2,4 GHz (la Vita no ve la de 5 GHz): " +
+                "la de casa, la de otro móvil o el punto de acceso de este (sin apagado automático).",
             "2. En la Vita: Ajustes › Red › Configuración de Wi-Fi, y conéctate a esa red.",
             "3. Aquí, pulsa «Iniciar».",
             "4. Abre VitaCar en la Vita: se conectará sola (el punto «Móvil» se pone verde).",
@@ -298,7 +298,7 @@ class MainActivity : Activity() {
         }
         vitaText.setTextColor(if (conn != null) green else if (running) amber else dim)
         ipText.text = localAddresses().let {
-            if (it.isEmpty()) "Sin red. Activa el punto de acceso."
+            if (it.isEmpty()) "Sin red. Conéctate a una WiFi o activa el punto de acceso."
             else "Direcciones de este móvil: " + it.joinToString("  ·  ")
         }
         toggleButton.text = if (running) "Detener" else "Iniciar"

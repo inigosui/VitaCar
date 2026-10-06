@@ -20,7 +20,12 @@ import android.provider.Settings
 import android.util.Log
 import org.json.JSONObject
 import java.io.IOException
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.ServerSocket
 import kotlin.concurrent.thread
 
@@ -29,6 +34,8 @@ class VitaService : Service() {
 
     companion object {
         const val PORT = 47474
+        private const val BEACON = "VITACAR1"
+        private const val BEACON_INTERVAL_MS = 1000L
         private const val CHANNEL_ID = "vitacar"
         private const val NOTIF_ID = 1
         private const val ACTION_STOP = "com.vitacar.companion.STOP"
@@ -97,6 +104,7 @@ class VitaService : Service() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
 
         thread(name = "vita-server", isDaemon = true) { acceptLoop() }
+        thread(name = "vita-beacon", isDaemon = true) { beaconLoop() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -142,6 +150,45 @@ class VitaService : Service() {
         } catch (e: IOException) {
             if (running) Log.e(TAG, "Servidor detenido", e)
         }
+    }
+
+    /** Anuncia el móvil a toda la red local para que la Vita lo encuentre en cualquier WiFi. */
+    private fun beaconLoop() {
+        val payload = BEACON.toByteArray(Charsets.US_ASCII)
+        try {
+            DatagramSocket().use { socket ->
+                socket.broadcast = true
+                while (running) {
+                    if (VitaHub.connection == null) {
+                        for (target in broadcastTargets()) {
+                            try {
+                                socket.send(DatagramPacket(payload, payload.size, target, PORT))
+                            } catch (_: IOException) {
+                                // Interfaz sin ruta (p. ej. 255.255.255.255 sin red por defecto).
+                            }
+                        }
+                    }
+                    Thread.sleep(BEACON_INTERVAL_MS)
+                }
+            }
+        } catch (e: Exception) {
+            if (running) Log.e(TAG, "Aviso a la red detenido", e)
+        }
+    }
+
+    /** Dirección de broadcast de cada interfaz activa (WiFi y punto de acceso), más la general. */
+    private fun broadcastTargets(): Set<InetAddress> {
+        val targets = mutableSetOf<InetAddress>(InetAddress.getByName("255.255.255.255"))
+        try {
+            for (iface in NetworkInterface.getNetworkInterfaces()) {
+                if (!iface.isUp || iface.isLoopback) continue
+                iface.interfaceAddresses
+                    .filter { it.address is Inet4Address }
+                    .mapNotNullTo(targets) { it.broadcast }
+            }
+        } catch (_: Exception) {
+        }
+        return targets
     }
 
     private fun onVitaMessage(conn: VitaConnection, msg: JSONObject) {

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define RECV_TIMEOUT_US  1000000
+#define UDP_TIMEOUT_US   250000
 
 #ifdef __vita__
 
@@ -125,6 +126,42 @@ bool net_send_all(int sock, const void *buf, int len)
     return true;
 }
 
+int net_udp_listen(int port)
+{
+    int s = sceNetSocket("vitacar_discover", SCE_NET_AF_INET, SCE_NET_SOCK_DGRAM, 0);
+    if (s < 0)
+        return NET_INVALID;
+
+    int on = 1, tmo = UDP_TIMEOUT_US;
+    sceNetSetsockopt(s, SCE_NET_SOL_SOCKET, SCE_NET_SO_REUSEADDR, &on, sizeof(on));
+    sceNetSetsockopt(s, SCE_NET_SOL_SOCKET, SCE_NET_SO_BROADCAST, &on, sizeof(on));
+    sceNetSetsockopt(s, SCE_NET_SOL_SOCKET, SCE_NET_SO_RCVTIMEO, &tmo, sizeof(tmo));
+
+    SceNetSockaddrIn addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_len = sizeof(addr);
+    addr.sin_family = SCE_NET_AF_INET;
+    addr.sin_port = sceNetHtons(port);
+    addr.sin_addr.s_addr = sceNetHtonl(SCE_NET_INADDR_ANY);
+    if (sceNetBind(s, (SceNetSockaddr *)&addr, sizeof(addr)) < 0) {
+        sceNetSocketClose(s);
+        return NET_INVALID;
+    }
+    return s;
+}
+
+int net_recvfrom(int sock, void *buf, int len, char *ip, size_t ip_len)
+{
+    SceNetSockaddrIn from;
+    unsigned int from_len = sizeof(from);
+    int r = sceNetRecvfrom(sock, buf, len, 0, (SceNetSockaddr *)&from, &from_len);
+    if (r == (int)SCE_NET_ERROR_EAGAIN)
+        return NET_TIMEOUT;
+    if (r >= 0 && !sceNetInetNtop(SCE_NET_AF_INET, &from.sin_addr, ip, ip_len))
+        ip[0] = '\0';
+    return r;
+}
+
 void net_abort(int sock)
 {
     if (sock >= 0)
@@ -228,6 +265,42 @@ bool net_send_all(int sock, const void *buf, int len)
         len -= r;
     }
     return true;
+}
+
+int net_udp_listen(int port)
+{
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+        return NET_INVALID;
+
+    int on = 1;
+    struct timeval tv = { 0, UDP_TIMEOUT_US };
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on));
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(s);
+        return NET_INVALID;
+    }
+    return s;
+}
+
+int net_recvfrom(int sock, void *buf, int len, char *ip, size_t ip_len)
+{
+    struct sockaddr_in from;
+    socklen_t from_len = sizeof(from);
+    ssize_t r = recvfrom(sock, buf, len, 0, (struct sockaddr *)&from, &from_len);
+    if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        return NET_TIMEOUT;
+    if (r >= 0 && !inet_ntop(AF_INET, &from.sin_addr, ip, ip_len))
+        ip[0] = '\0';
+    return (int)r;
 }
 
 void net_abort(int sock)

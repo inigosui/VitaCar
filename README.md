@@ -15,8 +15,9 @@ VitaCar es una app homebrew para PS Vita y una app compañera para Android. El m
 la Vita la música, los mensajes, las llamadas, el GPS, las indicaciones de navegación y el
 tiempo, y desde la Vita se controla todo con la pantalla táctil o los botones.
 
-> **Estado: en pruebas.** Funciona en el emulador y con un móvil simulado, pero aún no se ha
-> probado a fondo en consolas y móviles reales. Si lo pruebas, cuéntanos qué tal
+> **Estado: en pruebas.** Ya se ha probado en una PS Vita y un móvil Android reales: la música,
+> los controles y las indicaciones de Google Maps funcionan. Aún hay limitaciones conocidas
+> (ver [Problemas conocidos](#problemas-conocidos)). Si lo pruebas, cuéntanos qué tal
 > (ver [Feedback](#feedback)).
 
 ## Descarga
@@ -32,22 +33,37 @@ VitaCar.apk   -> para el móvil Android (8.0 o superior)
 
 1. **Móvil:** instala `VitaCar.apk` (permite «instalar apps desconocidas»). Ábrela y concede
    todos los permisos de la lista. En Realme/Oppo/Xiaomi, sigue también la tarjeta de batería.
-   - Si al activar «Acceso a notificaciones» Android dice *Ajuste restringido*:
-     Ajustes › Aplicaciones › VitaCar › ⋮ › **Permitir ajustes restringidos**.
-2. **Punto de acceso del móvil** en la banda de **2,4 GHz** (la Vita no ve la de 5 GHz)
-   y sin apagado automático.
-3. **Vita:** Ajustes › Red › Configuración de Wi-Fi › conéctate a ese punto de acceso.
+   - **«Acceso a notificaciones» es imprescindible**: sin él no se ven la canción que suena
+     (título, artista, portada), los mensajes ni las indicaciones de Google Maps. Los botones
+     de música sí funcionan sin él, porque usan las teclas multimedia de Android.
+   - Como la app no viene de Play Store, Android bloquea ese permiso y muestra *Ajuste
+     restringido*. Para desbloquearlo: Ajustes › Aplicaciones › VitaCar › ⋮ › **Permitir
+     ajustes restringidos** (pide el PIN o la huella). Después vuelve a la app y actívalo.
+2. **Una WiFi de 2,4 GHz** compartida por el móvil y la Vita (la Vita no ve la de 5 GHz). Sirve:
+   - **El punto de acceso del propio móvil Android** (sin apagado automático). Funciona aunque
+     el móvil no tenga datos, y es lo más sencillo: la Vita lo encuentra sola.
+   - **Cualquier otra WiFi**: la de casa o el punto de acceso de otro móvil (en iPhone, activa
+     «Maximizar compatibilidad»). En este caso, de momento, hay que indicarle a la Vita la IP
+     del móvil con un archivo (ver el paso 5).
+   - No sirven las redes que aíslan a sus clientes (invitados, hoteles, cafeterías…).
+3. **Vita:** Ajustes › Red › Configuración de Wi-Fi › conéctate a esa red.
 4. En la app del móvil pulsa **Iniciar**. Abre VitaCar en la Vita: el punto «Móvil» de la
    barra lateral se pone verde.
+5. **Solo si la Vita se queda en «Buscando»:** en la app del móvil, al pulsar «Iniciar», aparece
+   «Direcciones de este móvil». Copia la que lleva `(wlan0)`, por ejemplo `192.168.1.92`. Crea
+   un archivo de texto `phone_ip.txt` que contenga solo esa IP y cópialo en la Vita (con
+   VitaShell) a `ux0:data/VitaCar/phone_ip.txt`. Si el router le da otra IP al móvil más
+   adelante, actualiza el archivo; para volver a la búsqueda automática, bórralo.
 
-El audio va del móvil al coche como siempre (Bluetooth o AUX); la Vita no reproduce sonido.
+El sonido sale del móvil, que se conecta al coche como siempre (Bluetooth o AUX). La Vita no
+reproduce sonido (ver [Problemas conocidos](#problemas-conocidos)).
 
 ## Qué hace cada app
 
 | App | Funciona con |
 |---|---|
 | Música | Cualquier reproductor del móvil (Spotify, YouTube Music…): título, portada, progreso, anterior / pausa / siguiente |
-| Mapas | GPS del móvil, mapa de OpenStreetMap en modo noche, velocidad, zoom; indicaciones de Google Maps / Waze si están navegando en el móvil |
+| Mapas | GPS del móvil, mapa de OpenStreetMap en modo noche, velocidad, zoom; indicaciones (texto) de Google Maps / Waze cuando hay una ruta activa en el móvil |
 | Teléfono | Estado de la conexión; llamada entrante a pantalla completa (contestar / rechazar); colgar |
 | Mensajes | Notificaciones del móvil, aviso emergente, respuestas rápidas (WhatsApp, Telegram…), borrar |
 | Tiempo | Open-Meteo según tu ubicación |
@@ -55,6 +71,25 @@ El audio va del móvil al coche como siempre (Bluetooth o AUX); la Vita no repro
 
 Las teselas del mapa que llegan del móvil se guardan en `ux0:data/VitaCar/tiles`, así que
 las zonas ya vistas funcionan después sin conexión.
+
+## Problemas conocidos
+
+| Problema | Causa y solución |
+|---|---|
+| La Vita se queda en «Buscando» en una WiFi que no es el punto de acceso del móvil | La búsqueda automática aún no funciona en la Vita real: el móvil sí se anuncia en la red, pero la Vita no recibe el aviso. Mientras se corrige, usa `phone_ip.txt` (paso 5 de la puesta en marcha). |
+| No se ve la canción ni los mensajes, aunque los botones de música funcionan | Falta «Acceso a notificaciones» (paso 1 de la puesta en marcha). |
+| No aparecen las indicaciones de Google Maps | Hace falta el mismo permiso y una **ruta iniciada**: con Maps solo abierto no hay indicaciones. |
+| El mapa muestra las indicaciones, pero no dibuja la ruta | Google Maps no comparte la ruta con otras apps, solo el texto de la indicación. Está previsto que VitaCar calcule y dibuje su propia ruta. |
+| El sonido sale por el móvil, no por la Vita | Por ahora es así. Se estudia una opción experimental para enviarlo a la Vita, pero Android no deja capturar el sonido de algunas apps (como Spotify), de las llamadas ni de las indicaciones por voz. |
+| El mapa va algo lento | Cada tesela se descarga en el móvil, viaja por WiFi y la Vita la descomprime y oscurece para el modo noche. Las zonas ya vistas cargan más rápido. Está previsto mejorarlo. |
+| La app es solo para Android | iOS no permite a otras apps leer las notificaciones ni controlar la música, así que no hay versión para iPhone. Un iPhone sí puede servir para compartir la WiFi (ver la puesta en marcha). |
+
+## Próximamente
+
+- Búsqueda automática del móvil en cualquier WiFi, sin `phone_ip.txt`.
+- Ruta dibujada en el mapa: destino elegido en el móvil o compartido desde Google Maps.
+- Mapa más fluido.
+- Sonido por la Vita (opción experimental).
 
 ## Controles de la Vita
 

@@ -1,8 +1,19 @@
 # Protocolo Vita ↔ móvil (v1)
 
-TCP. El **móvil escucha** en el puerto `47474` y la **Vita se conecta**. Con el punto de
-acceso del móvil, la Vita usa su puerta de enlace como IP del móvil. Se puede forzar otra
-IP escribiéndola en `ux0:data/VitaCar/phone_ip.txt`.
+TCP. El **móvil escucha** en el puerto `47474` y la **Vita se conecta**.
+
+## Descubrimiento
+
+Mientras no hay ninguna Vita conectada, el móvil envía cada segundo un datagrama UDP con
+el texto ASCII `VITACAR1` al puerto `47474`, tanto a la dirección de broadcast de cada interfaz
+activa (WiFi y punto de acceso) como a `255.255.255.255`. La Vita toma como IP del móvil
+el remitente del datagrama. Así funciona en cualquier WiFi que no aísle a sus clientes.
+
+La Vita elige la IP en este orden:
+
+1. La escrita en `ux0:data/VitaCar/phone_ip.txt`, si existe.
+2. El remitente del último aviso UDP recibido (espera hasta 2,5 s).
+3. Su puerta de enlace (el caso del punto de acceso del móvil, si la red bloquea los broadcasts).
 
 ## Tramas
 
