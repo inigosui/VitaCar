@@ -1,0 +1,42 @@
+name: Informar de un fallo
+description: Algo no funciona como debería
+labels: ["fallo"]
+body:
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: ¿Qué ha pasado?
+      description: Describe el fallo y qué esperabas que ocurriera.
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos para reproducirlo
+      placeholder: |
+        1. Abro VitaCar en la Vita
+        2. Pulso Música
+        3. ...
+  - type: input
+    id: vita
+    attributes:
+      label: Modelo de PS Vita y firmware
+      placeholder: "PCH-2000, 3.65 con Ensō"
+    validations:
+      required: true
+  - type: input
+    id: movil
+    attributes:
+      label: Móvil y versión de Android
+      placeholder: "Realme GT Neo 2, Android 14"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión de VitaCar
+      placeholder: "0.2.0"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Capturas o información adicional

@@ -1,0 +1,16 @@
+name: Proponer una mejora
+description: Una idea para hacer VitaCar mejor
+labels: ["mejora"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: ¿Qué te gustaría?
+      description: Cuéntanos la idea y para qué te serviría en el coche.
+    validations:
+      required: true
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: ¿Cómo lo haces ahora?
+      description: Opcional. Si ahora mismo lo resuelves de otra forma.

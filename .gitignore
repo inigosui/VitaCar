@@ -1,0 +1,4 @@
+build/
+build-host/
+dist/
+__pycache__/
