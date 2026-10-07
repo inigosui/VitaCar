@@ -12,10 +12,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import org.json.JSONObject
@@ -27,6 +29,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import kotlin.concurrent.thread
 
 /** Servicio en primer plano: escucha a la Vita y mantiene vivos GPS, llamadas, etc. */
@@ -35,6 +38,7 @@ class VitaService : Service() {
     companion object {
         const val PORT = 47474
         private const val BEACON = "VITACAR1"
+        private const val QUERY = "VITACAR?"
         private const val BEACON_INTERVAL_MS = 1000L
         private const val CHANNEL_ID = "vitacar"
         private const val NOTIF_ID = 1
@@ -104,7 +108,7 @@ class VitaService : Service() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
 
         thread(name = "vita-server", isDaemon = true) { acceptLoop() }
-        thread(name = "vita-beacon", isDaemon = true) { beaconLoop() }
+        thread(name = "vita-discovery", isDaemon = true) { discoveryLoop() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -152,27 +156,61 @@ class VitaService : Service() {
         }
     }
 
-    /** Anuncia el móvil a toda la red local para que la Vita lo encuentre en cualquier WiFi. */
-    private fun beaconLoop() {
-        val payload = BEACON.toByteArray(Charsets.US_ASCII)
+    /**
+     * Descubrimiento en la red local, para que la Vita encuentre el móvil en cualquier WiFi:
+     * responde a la pregunta de la Vita y, mientras no hay ninguna conectada, se anuncia
+     * cada segundo. El MulticastLock evita que la WiFi del móvil descarte los broadcasts.
+     */
+    private fun discoveryLoop() {
+        val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+        val lock = wifi.createMulticastLock("VitaCar::discovery").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+        val answer = BEACON.toByteArray(Charsets.US_ASCII)
+        val buf = ByteArray(64)
         try {
-            DatagramSocket().use { socket ->
+            DatagramSocket(null).use { socket ->
+                socket.reuseAddress = true
                 socket.broadcast = true
+                socket.soTimeout = BEACON_INTERVAL_MS.toInt()
+                socket.bind(InetSocketAddress(PORT))
+                var nextBeacon = 0L
                 while (running) {
-                    if (VitaHub.connection == null) {
-                        for (target in broadcastTargets()) {
-                            try {
-                                socket.send(DatagramPacket(payload, payload.size, target, PORT))
-                            } catch (_: IOException) {
-                                // Interfaz sin ruta (p. ej. 255.255.255.255 sin red por defecto).
-                            }
-                        }
+                    val now = SystemClock.elapsedRealtime()
+                    if (now >= nextBeacon) {
+                        if (VitaHub.connection == null) sendBeacons(socket, answer)
+                        nextBeacon = now + BEACON_INTERVAL_MS
                     }
-                    Thread.sleep(BEACON_INTERVAL_MS)
+                    val packet = DatagramPacket(buf, buf.size)
+                    try {
+                        socket.receive(packet)
+                    } catch (_: SocketTimeoutException) {
+                        continue
+                    }
+                    if (String(packet.data, 0, packet.length, Charsets.US_ASCII) != QUERY) continue
+                    VitaHub.onVitaQuery()
+                    try {
+                        socket.send(DatagramPacket(answer, answer.size, packet.address, packet.port))
+                    } catch (e: IOException) {
+                        Log.w(TAG, "No se pudo responder a la Vita", e)
+                    }
                 }
             }
         } catch (e: Exception) {
-            if (running) Log.e(TAG, "Aviso a la red detenido", e)
+            if (running) Log.e(TAG, "Descubrimiento detenido", e)
+        } finally {
+            lock.release()
+        }
+    }
+
+    private fun sendBeacons(socket: DatagramSocket, payload: ByteArray) {
+        for (target in broadcastTargets()) {
+            try {
+                socket.send(DatagramPacket(payload, payload.size, target, PORT))
+            } catch (_: IOException) {
+                // Interfaz sin ruta (p. ej. 255.255.255.255 sin red por defecto).
+            }
         }
     }
 

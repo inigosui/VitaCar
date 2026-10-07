@@ -54,6 +54,15 @@ void net_wifi_info(NetWifiInfo *info)
         snprintf(info->ip, sizeof(info->ip), "%s", ci.ip_address);
     if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_SSID, &ci) >= 0)
         snprintf(info->ssid, sizeof(info->ssid), "%s", ci.ssid);
+
+    SceNetInAddr ip, mask;
+    if (sceNetInetPton(SCE_NET_AF_INET, info->ip, &ip) > 0) {
+        if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_NETMASK, &ci) < 0 ||
+            sceNetInetPton(SCE_NET_AF_INET, ci.netmask, &mask) <= 0)
+            mask.s_addr = sceNetHtonl(0xFFFFFF00);  /* la máscara habitual de una WiFi de casa */
+        ip.s_addr |= ~mask.s_addr;
+        sceNetInetNtop(SCE_NET_AF_INET, &ip, info->broadcast, sizeof(info->broadcast));
+    }
 }
 
 int net_connect(const char *ip, int port, int timeout_ms)
@@ -130,7 +139,7 @@ int net_udp_listen(int port)
 {
     int s = sceNetSocket("vitacar_discover", SCE_NET_AF_INET, SCE_NET_SOCK_DGRAM, 0);
     if (s < 0)
-        return NET_INVALID;
+        return s;
 
     int on = 1, tmo = UDP_TIMEOUT_US;
     sceNetSetsockopt(s, SCE_NET_SOL_SOCKET, SCE_NET_SO_REUSEADDR, &on, sizeof(on));
@@ -143,9 +152,10 @@ int net_udp_listen(int port)
     addr.sin_family = SCE_NET_AF_INET;
     addr.sin_port = sceNetHtons(port);
     addr.sin_addr.s_addr = sceNetHtonl(SCE_NET_INADDR_ANY);
-    if (sceNetBind(s, (SceNetSockaddr *)&addr, sizeof(addr)) < 0) {
+    int r = sceNetBind(s, (SceNetSockaddr *)&addr, sizeof(addr));
+    if (r < 0) {
         sceNetSocketClose(s);
-        return NET_INVALID;
+        return r;
     }
     return s;
 }
@@ -155,11 +165,25 @@ int net_recvfrom(int sock, void *buf, int len, char *ip, size_t ip_len)
     SceNetSockaddrIn from;
     unsigned int from_len = sizeof(from);
     int r = sceNetRecvfrom(sock, buf, len, 0, (SceNetSockaddr *)&from, &from_len);
-    if (r == (int)SCE_NET_ERROR_EAGAIN)
+    if (r == (int)SCE_NET_ERROR_EAGAIN || r == (int)SCE_NET_ERROR_ETIMEDOUT)
         return NET_TIMEOUT;
     if (r >= 0 && !sceNetInetNtop(SCE_NET_AF_INET, &from.sin_addr, ip, ip_len))
         ip[0] = '\0';
     return r;
+}
+
+int net_sendto(int sock, const void *buf, int len, const char *ip, int port)
+{
+    SceNetSockaddrIn to;
+    memset(&to, 0, sizeof(to));
+    to.sin_len = sizeof(to);
+    to.sin_family = SCE_NET_AF_INET;
+    to.sin_port = sceNetHtons(port);
+    if (strcmp(ip, "255.255.255.255") == 0)
+        to.sin_addr.s_addr = SCE_NET_INADDR_BROADCAST;
+    else if (sceNetInetPton(SCE_NET_AF_INET, ip, &to.sin_addr) <= 0)
+        return NET_BADADDR;
+    return sceNetSendto(sock, buf, len, 0, (SceNetSockaddr *)&to, sizeof(to));
 }
 
 void net_abort(int sock)
@@ -271,7 +295,7 @@ int net_udp_listen(int port)
 {
     int s = socket(AF_INET, SOCK_DGRAM, 0);
     if (s < 0)
-        return NET_INVALID;
+        return -errno;
 
     int on = 1;
     struct timeval tv = { 0, UDP_TIMEOUT_US };
@@ -285,8 +309,9 @@ int net_udp_listen(int port)
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        int err = -errno;
         close(s);
-        return NET_INVALID;
+        return err;
     }
     return s;
 }
@@ -301,6 +326,18 @@ int net_recvfrom(int sock, void *buf, int len, char *ip, size_t ip_len)
     if (r >= 0 && !inet_ntop(AF_INET, &from.sin_addr, ip, ip_len))
         ip[0] = '\0';
     return (int)r;
+}
+
+int net_sendto(int sock, const void *buf, int len, const char *ip, int port)
+{
+    struct sockaddr_in to;
+    memset(&to, 0, sizeof(to));
+    to.sin_family = AF_INET;
+    to.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip, &to.sin_addr) <= 0)
+        return NET_BADADDR;
+    ssize_t r = sendto(sock, buf, len, 0, (struct sockaddr *)&to, sizeof(to));
+    return r < 0 ? -errno : (int)r;
 }
 
 void net_abort(int sock)

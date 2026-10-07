@@ -29,11 +29,25 @@ typedef struct {
     bool can_reply;
 } PhoneNotif;
 
+typedef enum {
+    TARGET_NONE,
+    TARGET_MANUAL,      /* ux0:data/VitaCar/phone_ip.txt */
+    TARGET_DISCOVERED,  /* el móvil respondió a la búsqueda */
+    TARGET_GATEWAY,     /* puerta de enlace (punto de acceso del móvil) */
+} TargetSource;
+
 typedef struct {
     LinkState link;
     char phone_name[64];
     char phone_ip[16];
     char ssid[33];
+
+    /* Diagnóstico de la búsqueda del móvil (se muestra en la app Teléfono). */
+    char vita_ip[16];
+    TargetSource target_src;
+    int disc_sent;          /* preguntas enviadas sin error */
+    int disc_rx;            /* respuestas o avisos del móvil recibidos */
+    int disc_err;           /* último error de red de la búsqueda; 0 si ninguno */
     int battery;            /* -1 si no se sabe */
     bool charging;
 

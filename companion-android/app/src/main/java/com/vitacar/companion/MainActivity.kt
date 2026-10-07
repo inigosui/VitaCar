@@ -293,6 +293,7 @@ class MainActivity : Activity() {
         serviceText.setTextColor(if (running) green else dim)
         vitaText.text = when {
             conn != null -> "Vita conectada (${conn.remoteAddress})"
+            running && VitaHub.vitaQueries > 0 -> "Esperando a la Vita… (te ha buscado ${VitaHub.vitaQueries} veces)"
             running -> "Esperando a la Vita…"
             else -> "Pulsa «Iniciar» para que la Vita pueda conectarse"
         }

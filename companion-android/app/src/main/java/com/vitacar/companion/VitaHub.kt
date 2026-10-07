@@ -33,6 +33,16 @@ object VitaHub {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** Veces que la Vita ha buscado el móvil en la red (diagnóstico para la pantalla principal). */
+    @Volatile
+    var vitaQueries = 0
+        private set
+
+    fun onVitaQuery() {
+        vitaQueries++
+        notifyListeners()
+    }
+
     fun addListener(l: () -> Unit) = listeners.add(l)
     fun removeListener(l: () -> Unit) = listeners.remove(l)
     private fun notifyListeners() = mainHandler.post { listeners.forEach { it() } }

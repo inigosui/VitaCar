@@ -16,8 +16,10 @@
 #define RETRY_MS            2000
 #define PING_INTERVAL_MS    3000
 #define RX_TIMEOUT_MS       12000
-#define DISCOVER_MS         2500    /* el móvil se anuncia cada segundo */
-#define DISCOVER_MAGIC      "VITACAR1"
+#define DISCOVER_MS         2500
+#define QUERY_MS            500
+#define DISCOVER_QUERY      "VITACAR?"  /* pregunta de la Vita */
+#define DISCOVER_MAGIC      "VITACAR1"  /* respuesta y aviso del móvil */
 
 #ifdef __vita__
 /* Si existe, se usa esta IP en vez de la puerta de enlace (móvil y Vita en la misma WiFi). */
@@ -332,18 +334,56 @@ static bool read_ip_override(char *ip, size_t n)
     return false;
 }
 
-/* Espera el aviso UDP que el móvil envía a toda la red. Se queda con el más reciente:
- * el socket sigue abierto entre intentos y puede haber avisos antiguos en cola. */
-static bool discover_phone(char *ip, size_t n)
+static void note_discovery(int sent, int rx, int err)
 {
-    if (g_udp == NET_INVALID)
+    SDL_LockMutex(g_lock);
+    g_shared.disc_sent += sent;
+    g_shared.disc_rx += rx;
+    if (err)
+        g_shared.disc_err = err;
+    SDL_UnlockMutex(g_lock);
+}
+
+/* Pregunta a toda la red por el móvil, que responde directamente a la Vita. */
+static void send_query(const NetWifiInfo *wifi)
+{
+    const char *targets[] = { wifi->broadcast, "255.255.255.255" };
+    for (int i = 0; i < 2; i++) {
+        if (!targets[i][0] || (i == 1 && strcmp(targets[0], targets[1]) == 0))
+            continue;
+        int r = net_sendto(g_udp, DISCOVER_QUERY, strlen(DISCOVER_QUERY), targets[i], PHONE_PORT);
+        note_discovery(r >= 0, 0, r < 0 ? r : 0);
+    }
+}
+
+/* Busca el móvil durante DISCOVER_MS: pregunta cada QUERY_MS y acepta tanto su respuesta
+ * como el aviso que envía por su cuenta. El socket sigue abierto entre intentos, así
+ * que puede haber avisos antiguos en cola: se queda con el último. */
+static bool discover_phone(const NetWifiInfo *wifi, char *ip, size_t n)
+{
+    if (g_udp == NET_INVALID) {
+        /* En el puerto fijo llegan también los avisos del móvil. Si no se puede usar, vale
+         * uno libre: el móvil responde a la pregunta en el puerto del que salió. */
         g_udp = net_udp_listen(PHONE_PORT);
-    if (g_udp == NET_INVALID)
-        return false;
+        if (g_udp < 0) {
+            note_discovery(0, 0, g_udp);
+            g_udp = net_udp_listen(0);
+        }
+        if (g_udp < 0) {
+            note_discovery(0, 0, g_udp);
+            g_udp = NET_INVALID;
+            return false;
+        }
+    }
 
     bool found = false;
-    Uint32 start = SDL_GetTicks();
+    Uint32 start = SDL_GetTicks(), next_query = start;
     while (!SDL_AtomicGet(&g_quit)) {
+        Uint32 now = SDL_GetTicks();
+        if (!found && (Sint32)(now - next_query) >= 0) {
+            send_query(wifi);
+            next_query = now + QUERY_MS;
+        }
         char buf[64], from[16];
         int r = net_recvfrom(g_udp, buf, sizeof(buf) - 1, from, sizeof(from));
         if (r == NET_TIMEOUT) {
@@ -352,26 +392,32 @@ static bool discover_phone(char *ip, size_t n)
             continue;
         }
         if (r < 0) {
+            note_discovery(0, 0, r);
             net_close(g_udp);
             g_udp = NET_INVALID;
             break;
         }
         buf[r] = '\0';
-        if (strncmp(buf, DISCOVER_MAGIC, strlen(DISCOVER_MAGIC)) == 0 && from[0]) {
+        /* Ignora la propia pregunta, que también llega a la Vita por ser broadcast. */
+        if (strcmp(buf, DISCOVER_MAGIC) == 0 && from[0] && strcmp(from, wifi->ip) != 0) {
             snprintf(ip, n, "%s", from);
             found = true;
+            note_discovery(0, 1, 0);
         }
     }
     return found;
 }
 
-/* Prioridad: IP escrita a mano, aviso del móvil y, por último, la puerta de enlace
+/* Prioridad: IP escrita a mano, búsqueda en la red y, por último, la puerta de enlace
  * (el caso del punto de acceso del móvil, por si la red bloquea los broadcasts). */
-static void pick_target(const NetWifiInfo *wifi, char *ip, size_t n)
+static TargetSource pick_target(const NetWifiInfo *wifi, char *ip, size_t n)
 {
-    if (read_ip_override(ip, n) || discover_phone(ip, n))
-        return;
+    if (read_ip_override(ip, n))
+        return TARGET_MANUAL;
+    if (discover_phone(wifi, ip, n))
+        return TARGET_DISCOVERED;
     snprintf(ip, n, "%s", wifi->gateway);
+    return TARGET_GATEWAY;
 }
 
 static void reset_session_state(void)
@@ -397,11 +443,14 @@ static int thread_main(void *unused)
         SDL_LockMutex(g_lock);
         g_shared.link = wifi.connected ? LINK_SEARCHING : LINK_NO_WIFI;
         snprintf(g_shared.ssid, sizeof(g_shared.ssid), "%s", wifi.ssid);
+        snprintf(g_shared.vita_ip, sizeof(g_shared.vita_ip), "%s", wifi.ip);
         SDL_UnlockMutex(g_lock);
 
         char target[16] = "";
-        if (wifi.connected)
-            pick_target(&wifi, target, sizeof(target));
+        TargetSource src = wifi.connected ? pick_target(&wifi, target, sizeof(target)) : TARGET_NONE;
+        SDL_LockMutex(g_lock);
+        g_shared.target_src = src;
+        SDL_UnlockMutex(g_lock);
         int sock = target[0] ? net_connect(target, PHONE_PORT, CONNECT_TIMEOUT_MS) : NET_INVALID;
         if (sock == NET_INVALID) {
             for (int i = 0; i < RETRY_MS / 100 && !SDL_AtomicGet(&g_quit); i++)

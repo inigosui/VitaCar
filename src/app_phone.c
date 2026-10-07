@@ -24,6 +24,27 @@ static void draw_active_call(const PhoneState *ps)
     ui_text(FONT_LABEL, "Colgar", cx, HANGUP_Y + HANGUP_R + 14, COL_TEXT, ALIGN_CENTER);
 }
 
+/* Diagnóstico de la búsqueda: ayuda a saber si la red deja pasar las preguntas. */
+static void draw_discovery(const PhoneState *ps, float x, float w)
+{
+    static const char *const SOURCES[] = {
+        [TARGET_NONE] = "—",
+        [TARGET_MANUAL] = "IP de phone_ip.txt",
+        [TARGET_DISCOVERED] = "respuesta del móvil",
+        [TARGET_GATEWAY] = "puerta de enlace",
+    };
+    char line[160];
+    snprintf(line, sizeof(line), "Vita %s  ·  preguntas %d  ·  respuestas %d",
+             ps->vita_ip[0] ? ps->vita_ip : "—", ps->disc_sent, ps->disc_rx);
+    ui_text_fit(FONT_SMALL, line, x + 8, 436, w - 16, COL_TEXT_DIM, ALIGN_LEFT);
+    if (ps->disc_err)
+        snprintf(line, sizeof(line), "Probando: %s  ·  error de red 0x%08X",
+                 SOURCES[ps->target_src], (unsigned)ps->disc_err);
+    else
+        snprintf(line, sizeof(line), "Probando: %s", SOURCES[ps->target_src]);
+    ui_text_fit(FONT_SMALL, line, x + 8, 462, w - 16, COL_TEXT_DIM, ALIGN_LEFT);
+}
+
 static void draw_status(const PhoneState *ps)
 {
     float x = CONTENT_X + 48, w = CONTENT_W - 96;
@@ -77,6 +98,8 @@ static void draw_status(const PhoneState *ps)
     ui_fill_round_rect(x, 160, w, 262, 18, COL_PANEL);
     for (int i = 0; i < 3; i++)
         ui_text_wrap(FONT_LABEL, STEPS[i], x + 24, 180 + i * 80, w - 48, 2, COL_TEXT);
+    if (ps->link == LINK_SEARCHING)
+        draw_discovery(ps, x, w);
     hint_bar("O  inicio");
 }
 
