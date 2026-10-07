@@ -60,16 +60,40 @@ VitaCar.apk   -> para el móvil Android (8.0 o superior)
 El sonido sale del móvil, que se conecta al coche como siempre (Bluetooth o AUX). La Vita no
 reproduce sonido (ver [Problemas conocidos](#problemas-conocidos)).
 
+### Ruta en el mapa
+
+VitaCar calcula su propia ruta y la dibuja en el mapa de la Vita, con lo que queda y la hora de
+llegada. Para elegir el destino:
+
+- En Google Maps, abre un sitio y pulsa **Compartir › VitaCar**.
+- O, en la app del móvil, escríbelo en **Ruta** y pulsa Buscar.
+
+Elige **Coche** o **A pie**. Si te desvías, la ruta se recalcula sola. Al llegar desaparece, y
+también puedes quitarla con «Quitar ruta». La ruta se calcula con OSRM (datos de OpenStreetMap)
+y necesita datos móviles.
+
+### Sonido por la Vita (experimental)
+
+En la app del móvil, **Sonido por la Vita › Activar** (Android 10 o superior). El sonido de las
+apps sale entonces por la Vita: su altavoz, unos auriculares o un transmisor Bluetooth. Límites
+de Android:
+
+- Spotify y otras apps no dejan capturar su sonido.
+- No se capturan las llamadas ni la voz de Google Maps.
+- Android pide permiso para «emitir pantalla» cada vez que pulsas Iniciar. Solo se usa el
+  sonido, no la imagen.
+- Gasta más batería. El móvil sigue sonando: baja su volumen a 0.
+
 ## Qué hace cada app
 
 | App | Funciona con |
 |---|---|
 | Música | Cualquier reproductor del móvil (Spotify, YouTube Music…): título, portada, progreso, anterior / pausa / siguiente |
-| Mapas | GPS del móvil, mapa de OpenStreetMap en modo noche, velocidad, zoom; indicaciones (texto) de Google Maps / Waze cuando hay una ruta activa en el móvil |
+| Mapas | GPS del móvil, mapa de OpenStreetMap en modo noche, velocidad, zoom; ruta propia dibujada con distancia, tiempo y hora de llegada; indicaciones (texto) de Google Maps / Waze cuando hay una ruta activa en el móvil |
 | Teléfono | Estado de la conexión; llamada entrante a pantalla completa (contestar / rechazar); colgar |
 | Mensajes | Notificaciones del móvil, aviso emergente, respuestas rápidas (WhatsApp, Telegram…), borrar |
 | Tiempo | Open-Meteo según tu ubicación |
-| Ajustes | Batería, móvil conectado, red |
+| Ajustes | Batería, móvil conectado, por dónde sale el sonido, red |
 
 Las teselas del mapa que llegan del móvil se guardan en `ux0:data/VitaCar/tiles`, así que
 las zonas ya vistas funcionan después sin conexión.
@@ -81,16 +105,17 @@ las zonas ya vistas funcionan después sin conexión.
 | La Vita se queda en «Buscando» | Comprueba que los dos estén en la misma WiFi de 2,4 GHz y que no sea una red que aísla a sus clientes. Si aun así no conecta, usa `phone_ip.txt` (paso 5 de la puesta en marcha). |
 | No se ve la canción ni los mensajes, aunque los botones de música funcionan | Falta «Acceso a notificaciones» (paso 1 de la puesta en marcha). |
 | No aparecen las indicaciones de Google Maps | Hace falta el mismo permiso y una **ruta iniciada**: con Maps solo abierto no hay indicaciones. |
-| El mapa muestra las indicaciones, pero no dibuja la ruta | Google Maps no comparte la ruta con otras apps, solo el texto de la indicación. Está previsto que VitaCar calcule y dibuje su propia ruta. |
-| El sonido sale por el móvil, no por la Vita | Por ahora es así. Se estudia una opción experimental para enviarlo a la Vita, pero Android no deja capturar el sonido de algunas apps (como Spotify), de las llamadas ni de las indicaciones por voz. |
-| El mapa va algo lento | Cada tesela se descarga en el móvil, viaja por WiFi y la Vita la descomprime y oscurece para el modo noche. Las zonas ya vistas cargan más rápido. Está previsto mejorarlo. |
+| El mapa muestra las indicaciones de Google Maps, pero no su ruta | Google Maps no comparte la ruta con otras apps, solo el texto de la indicación. Comparte el destino con VitaCar (ver [Ruta en el mapa](#ruta-en-el-mapa)) para que dibuje la suya. Si navegas con los dos a la vez, pueden ir por caminos distintos. |
+| El sonido sale por el móvil, no por la Vita | Es lo normal. Hay una opción experimental para enviarlo a la Vita (ver [Sonido por la Vita](#sonido-por-la-vita-experimental)), pero Android no deja capturar el sonido de algunas apps (como Spotify), de las llamadas ni de las indicaciones por voz. |
+| Al cambiar el zoom, el mapa se ve gris un momento | Cada tesela se descarga en el móvil, viaja por WiFi y la Vita la descomprime y oscurece para el modo noche. Las zonas ya vistas se quedan y cargan al momento. |
+| El mapa no se puede mover con el dedo | Por ahora el mapa sigue tu posición y solo tiene zoom. Está previsto poder moverlo. |
+| La hora de llegada no coincide con la de Google Maps | VitaCar calcula su propia ruta con OSRM, que no tiene en cuenta el tráfico. |
 | La app es solo para Android | iOS no permite a otras apps leer las notificaciones ni controlar la música, así que no hay versión para iPhone. Un iPhone sí puede servir para compartir la WiFi (ver la puesta en marcha). |
 
 ## Próximamente
 
-- Ruta dibujada en el mapa: destino elegido en el móvil o compartido desde Google Maps.
+- Mover el mapa con el dedo.
 - Mapa más fluido.
-- Sonido por la Vita (opción experimental).
 
 ## Controles de la Vita
 
@@ -133,6 +158,7 @@ src/main.c           Bucle principal y entrada
 src/screens.c        Barra lateral, inicio, avisos emergentes, llamada entrante
 src/app_*.c          Música, Mapas, Teléfono, Mensajes, Tiempo y Ajustes
 src/phone.c          Conexión con el móvil (hilo de red, protocolo, estado)
+src/audio.c          Sonido del móvil por la Vita (experimental)
 src/net.c            Sockets: sceNet en la Vita, POSIX en el PC
 src/tiles.c          Teselas: memoria, tarjeta y móvil; modo noche
 src/ui.c, icons.c    Dibujo, texto con caché y recorte, iconos vectoriales
@@ -171,6 +197,9 @@ Mantienen sus propias licencias:
 
 - Mapa: © colaboradores de OpenStreetMap (ODbL). Teselas de `tile.openstreetmap.org`, cuyo
   uso está pensado para volumen bajo; para uso intensivo, configura otro servidor en la app.
+- Rutas: [OSRM](https://project-osrm.org) en `routing.openstreetmap.de` (FOSSGIS) y
+  `router.project-osrm.org`. Búsqueda de sitios: el buscador de Android o
+  [Nominatim](https://nominatim.openstreetmap.org).
 - Tiempo: [Open-Meteo](https://open-meteo.com) (CC BY 4.0).
 - Fuente Noto Sans: SIL Open Font License 1.1 ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)).
 - cJSON: MIT ([src/third_party/cjson/LICENSE](src/third_party/cjson/LICENSE)).

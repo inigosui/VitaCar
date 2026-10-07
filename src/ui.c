@@ -200,6 +200,45 @@ void ui_line(float x1, float y1, float x2, float y2, float thick, SDL_Color c, b
     }
 }
 
+/* Línea quebrada en un solo lote de geometría, con uniones redondeadas. Para la ruta del mapa,
+ * que puede tener cientos de tramos: un ui_line por tramo sería demasiado lento en la Vita. */
+void ui_polyline(const float *xy, int n, float thick, SDL_Color c)
+{
+    enum { JOIN_SEG = 8 };
+    float r = thick / 2;
+    geo_begin(c);
+    for (int i = 0; i < n; i++) {
+        /* Cabe el siguiente tramo y su unión; si no, se dibuja lo acumulado y se empieza otro lote. */
+        if (g_nv + 4 + JOIN_SEG + 2 > MAX_VERTS || g_ni + 6 + JOIN_SEG * 3 > MAX_INDICES) {
+            geo_end();
+            geo_begin(c);
+        }
+        float x = xy[i * 2], y = xy[i * 2 + 1];
+        int center = geo_vert(x, y);
+        for (int k = 0; k <= JOIN_SEG; k++) {
+            float a = 2.0f * PI_F * k / JOIN_SEG;
+            int v = geo_vert(x + cosf(a) * r, y + sinf(a) * r);
+            if (k > 0)
+                geo_tri(center, v - 1, v);
+        }
+        if (i + 1 == n)
+            break;
+        float x2 = xy[i * 2 + 2], y2 = xy[i * 2 + 3];
+        float dx = x2 - x, dy = y2 - y;
+        float len = sqrtf(dx * dx + dy * dy);
+        if (len < 0.001f)
+            continue;
+        float nx = -dy / len * r, ny = dx / len * r;
+        int a = geo_vert(x + nx, y + ny);
+        int b = geo_vert(x2 + nx, y2 + ny);
+        int d = geo_vert(x2 - nx, y2 - ny);
+        int e = geo_vert(x - nx, y - ny);
+        geo_tri(a, b, d);
+        geo_tri(a, d, e);
+    }
+    geo_end();
+}
+
 void ui_image(SDL_Texture *tex, const SDL_Rect *src, float x, float y, float w, float h)
 {
     SDL_FRect dst = { x, y, w, h };

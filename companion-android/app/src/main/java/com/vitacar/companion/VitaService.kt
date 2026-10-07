@@ -12,10 +12,14 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
@@ -43,6 +47,10 @@ class VitaService : Service() {
         private const val CHANNEL_ID = "vitacar"
         private const val NOTIF_ID = 1
         private const val ACTION_STOP = "com.vitacar.companion.STOP"
+        private const val ACTION_AUDIO_START = "com.vitacar.companion.AUDIO_START"
+        private const val ACTION_AUDIO_STOP = "com.vitacar.companion.AUDIO_STOP"
+        private const val EXTRA_RESULT_CODE = "result_code"
+        private const val EXTRA_RESULT_DATA = "result_data"
         private const val TAG = "VitaService"
 
         @Volatile
@@ -56,6 +64,19 @@ class VitaService : Service() {
         fun stop(ctx: Context) {
             ctx.startService(Intent(ctx, VitaService::class.java).setAction(ACTION_STOP))
         }
+
+        /** Con el permiso de "emitir pantalla" recién concedido: empieza a enviar el sonido. */
+        fun startAudio(ctx: Context, resultCode: Int, data: Intent) {
+            ctx.startForegroundService(
+                Intent(ctx, VitaService::class.java).setAction(ACTION_AUDIO_START)
+                    .putExtra(EXTRA_RESULT_CODE, resultCode)
+                    .putExtra(EXTRA_RESULT_DATA, data),
+            )
+        }
+
+        fun stopAudio(ctx: Context) {
+            if (running) ctx.startService(Intent(ctx, VitaService::class.java).setAction(ACTION_AUDIO_STOP))
+        }
     }
 
     private var server: ServerSocket? = null
@@ -64,6 +85,8 @@ class VitaService : Service() {
     private lateinit var weather: WeatherFetcher
     private lateinit var tiles: TileFetcher
     private lateinit var calls: CallMonitor
+    private var projection: MediaProjection? = null
+    private var audio: AudioStreamer? = null
     private val hubListener: () -> Unit = { updateNotification() }
 
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -100,7 +123,10 @@ class VitaService : Service() {
 
         tiles = TileFetcher(this)
         weather = WeatherFetcher(this)
-        location = LocationTracker(this) { loc -> weather.onLocation(loc) }
+        location = LocationTracker(this) { loc ->
+            weather.onLocation(loc)
+            RouteNavigator.onLocation(this, loc)
+        }
         location.start()
         weather.start()
         calls = CallMonitor(this)
@@ -112,15 +138,20 @@ class VitaService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_AUDIO_START -> startAudio(intent)
+            ACTION_AUDIO_STOP -> stopAudio()
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        stopAudio()
         try {
             server?.close()
         } catch (_: IOException) {
@@ -135,6 +166,54 @@ class VitaService : Service() {
         tiles.shutdown()
         wakeLock?.release()
         super.onDestroy()
+    }
+
+    // ---------- Sonido por la Vita ----------
+
+    private fun startAudio(intent: Intent) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        @Suppress("DEPRECATION")
+        val data = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA) ?: return
+        val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+        stopAudio()
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        try {
+            // Android exige estar en primer plano como "emisión de pantalla" antes de usar el permiso.
+            startInForeground(withProjection = true)
+            val mp = getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data) ?: return
+            mp.registerCallback(object : MediaProjection.Callback() {
+                // El usuario lo ha parado desde la barra de notificaciones (o Android lo ha cortado).
+                override fun onStop() {
+                    if (projection === mp) stopAudio()
+                }
+            }, Handler(Looper.getMainLooper()))
+            projection = mp
+            val streamer = AudioStreamer(mp)
+            if (!streamer.start()) {
+                Log.w(TAG, "No se pudo empezar a capturar el sonido")
+                stopAudio()
+                return
+            }
+            audio = streamer
+            VitaHub.updateAudio(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "No se pudo activar el sonido por la Vita", e)
+            stopAudio()
+        }
+    }
+
+    private fun stopAudio() {
+        val wasActive = projection != null
+        audio?.stop()
+        audio = null
+        projection?.let {
+            projection = null
+            it.stop()
+        }
+        if (wasActive) {
+            VitaHub.updateAudio(false)
+            if (running) startInForeground(withProjection = false)
+        }
     }
 
     private fun acceptLoop() {
@@ -262,6 +341,7 @@ class VitaService : Service() {
     private fun buildNotification(): Notification {
         val conn = VitaHub.connection
         val text = if (conn != null) "Vita conectada (${conn.remoteAddress})" else "Esperando a la Vita…"
+            .let { if (VitaHub.audioActive) "$it · sonido por la Vita" else it }
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
@@ -282,12 +362,13 @@ class VitaService : Service() {
         if (running) getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
     }
 
-    private fun startInForeground() {
+    private fun startInForeground(withProjection: Boolean = false) {
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
                 type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            if (withProjection) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
             startForeground(NOTIF_ID, notification, type)
         } else {
             startForeground(NOTIF_ID, notification)

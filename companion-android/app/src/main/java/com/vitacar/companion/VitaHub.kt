@@ -23,6 +23,13 @@ object VitaHub {
     private val notifs = LinkedHashMap<String, JSONObject>()
     private var gps: JSONObject? = null
     private var nav: JSONObject? = null
+    private var route: JSONObject? = null
+    private var routeLeft: JSONObject? = null
+
+    /** El móvil está enviando su sonido a la Vita. */
+    @Volatile
+    var audioActive = false
+        private set
     private var weather: JSONObject? = null
     private var call: JSONObject? = null
 
@@ -45,7 +52,7 @@ object VitaHub {
 
     fun addListener(l: () -> Unit) = listeners.add(l)
     fun removeListener(l: () -> Unit) = listeners.remove(l)
-    private fun notifyListeners() = mainHandler.post { listeners.forEach { it() } }
+    fun notifyListeners() = mainHandler.post { listeners.forEach { it() } }
 
     fun msg(type: String, vararg fields: Pair<String, Any?>): JSONObject =
         JSONObject().apply {
@@ -87,8 +94,11 @@ object VitaHub {
             notifs.values.forEach { conn.sendJson(JSONObject(it.toString()).put("silent", true)) }
             gps?.let(conn::sendJson)
             nav?.let(conn::sendJson)
+            route?.let(conn::sendJson)
+            routeLeft?.let(conn::sendJson)
             weather?.let(conn::sendJson)
             call?.let(conn::sendJson)
+            if (audioActive) conn.sendJson(audioMsg())
         }
     }
 
@@ -138,6 +148,29 @@ object VitaHub {
     fun updateNav(m: JSONObject) {
         synchronized(lock) { nav = m }
         send(m)
+    }
+
+    /** Ruta nueva (con sus puntos) o borrada, y/o lo que queda de la actual. */
+    fun updateRoute(newRoute: JSONObject?, left: JSONObject?) {
+        synchronized(lock) {
+            if (newRoute != null) {
+                route = newRoute
+                routeLeft = null
+            }
+            if (left != null) routeLeft = left
+        }
+        newRoute?.let(::send)
+        left?.let(::send)
+    }
+
+    private fun audioMsg() = msg(
+        "audio", "active" to audioActive, "rate" to AudioStreamer.RATE, "ch" to AudioStreamer.CHANNELS,
+    )
+
+    fun updateAudio(active: Boolean) {
+        audioActive = active
+        send(audioMsg())
+        notifyListeners()
     }
 
     fun updateWeather(m: JSONObject) {

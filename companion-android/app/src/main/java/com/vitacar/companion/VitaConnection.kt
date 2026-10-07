@@ -11,6 +11,7 @@ import java.net.Socket
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /**
@@ -26,6 +27,10 @@ class VitaConnection(
         const val FRAME_JSON = 1
         const val FRAME_ART = 2
         const val FRAME_TILE = 3
+        const val FRAME_AUDIO = 4
+        /* Sonido pendiente de enviar como máximo (10 x 20 ms): si la WiFi se atasca, se
+         * descarta en vez de acumular retraso. */
+        private const val MAX_AUDIO_PENDING = 10
         private const val MAX_FRAME = 4 * 1024 * 1024
         /* La Vita envía un ping cada 3 s: si en 15 s no llega nada, está muerta. */
         private const val READ_TIMEOUT_MS = 15_000
@@ -35,6 +40,7 @@ class VitaConnection(
     private val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
     private val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
     private val closed = AtomicBoolean(false)
+    private val audioPending = AtomicInteger(0)
     /* Android prohíbe usar la red en el hilo principal, y los avisos de batería,
      * GPS o música llegan por ahí: todo envío pasa por este hilo, en orden. */
     private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "vita-writer").apply { isDaemon = true } }
@@ -88,7 +94,13 @@ class VitaConnection(
         sendFrame(FRAME_TILE, payload)
     }
 
-    private fun sendFrame(type: Int, payload: ByteArray) {
+    fun sendAudio(pcm: ByteArray) {
+        if (audioPending.get() >= MAX_AUDIO_PENDING) return
+        audioPending.incrementAndGet()
+        sendFrame(FRAME_AUDIO, pcm) { audioPending.decrementAndGet() }
+    }
+
+    private fun sendFrame(type: Int, payload: ByteArray, done: (() -> Unit)? = null) {
         if (closed.get()) return
         try {
             writer.execute {
@@ -99,9 +111,12 @@ class VitaConnection(
                     output.flush()
                 } catch (e: IOException) {
                     close()
+                } finally {
+                    done?.invoke()
                 }
             }
         } catch (_: RejectedExecutionException) {
+            done?.invoke()
             // La conexión se cerró entre la comprobación y el envío.
         }
     }

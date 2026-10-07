@@ -272,6 +272,11 @@ void screens_update(App *app, float dt)
         }
     }
 
+    if (ps->route_arrived != app->seen_arrived) {
+        app->seen_arrived = ps->route_arrived;
+        show_toast(app, "Has llegado a tu destino");
+    }
+
     if (ps->call != app->last_call) {
         if (ps->call == CALL_RINGING)
             app->call_focus = 1;

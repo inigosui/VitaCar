@@ -20,9 +20,18 @@
 
 #define PI_D          3.14159265358979323846
 
+/* Ruta: puntos a menos de ROUTE_MIN_PX en pantalla se saltan, y los tramos se recortan a la
+ * pantalla con ROUTE_MARGIN de margen. Así se dibujan pocos tramos aunque la ruta sea larga. */
+#define ROUTE_MIN_PX      4.0
+#define ROUTE_MARGIN      40.0
+#define ROUTE_DRAW_MAX    2048
+#define ROUTE_MAX_RUNS    64
+
 static const SDL_Color TILE_BG   = { 30, 33, 40, 255 };
 static const SDL_Color ARROW_COL = { 10, 132, 255, 255 };
 static const SDL_Color NAV_BG    = { 22, 110, 62, 255 };
+static const SDL_Color ROUTE_COL  = { 66, 160, 255, 255 };
+static const SDL_Color ROUTE_EDGE = { 18, 70, 150, 255 };
 
 static int current_zoom(App *app)
 {
@@ -73,6 +82,155 @@ static void draw_tiles(double wx, double wy, int z, float cx, float cy)
     }
 }
 
+/* Recorta el tramo a-b al rectángulo (Liang-Barsky). Devuelve false si queda fuera. */
+static bool clip_segment(double *ax, double *ay, double *bx, double *by,
+                         double x0, double y0, double x1, double y1)
+{
+    double dx = *bx - *ax, dy = *by - *ay, t0 = 0, t1 = 1;
+    const double p[4] = { -dx, dx, -dy, dy };
+    const double q[4] = { *ax - x0, x1 - *ax, *ay - y0, y1 - *ay };
+    for (int i = 0; i < 4; i++) {
+        if (p[i] == 0) {
+            if (q[i] < 0)
+                return false;
+            continue;
+        }
+        double r = q[i] / p[i];
+        if (p[i] < 0) {
+            if (r > t1) return false;
+            if (r > t0) t0 = r;
+        } else {
+            if (r < t0) return false;
+            if (r < t1) t1 = r;
+        }
+    }
+    double sx = *ax, sy = *ay;
+    *ax = sx + t0 * dx;
+    *ay = sy + t0 * dy;
+    *bx = sx + t1 * dx;
+    *by = sy + t1 * dy;
+    return true;
+}
+
+/* Lo que queda de ruta, desde la flecha hasta el destino. Los tramos que salen de la
+ * pantalla parten la línea en varios trozos ("runs"). */
+static void draw_route(const PhoneState *ps, double wx, double wy, int z, float cx, float cy)
+{
+    const double *pts;
+    int n = phone_route(&pts);
+    int start = ps->route_idx < 0 ? 0 : ps->route_idx;
+    if (start >= n)
+        return;
+
+    static float xy[ROUTE_DRAW_MAX * 2];
+    int runs[ROUTE_MAX_RUNS + 1], nruns = 0, m = 0;
+    double world = TILE_SIZE * (double)(1 << z);
+    double left = wx - (cx - CONTENT_X), top = wy - cy;
+    double x0 = CONTENT_X - ROUTE_MARGIN, y0 = -ROUTE_MARGIN;
+    double x1 = SCREEN_W + ROUTE_MARGIN, y1 = SCREEN_H + ROUTE_MARGIN;
+
+    /* La línea empieza en la flecha; sin GPS, en el primer punto pendiente. */
+    double ax, ay;
+    int i = start;
+    if (ps->gps_valid) {
+        ax = cx;
+        ay = cy;
+    } else {
+        ax = CONTENT_X + pts[i * 2] * world - left;
+        ay = pts[i * 2 + 1] * world - top;
+        i++;
+    }
+    bool open = false;      /* el último punto guardado continúa el trozo actual */
+
+    for (; i < n; i++) {
+        double bx = CONTENT_X + pts[i * 2] * world - left;
+        double by = pts[i * 2 + 1] * world - top;
+        double dx = bx - ax, dy = by - ay;
+        if (i + 1 < n && dx * dx + dy * dy < ROUTE_MIN_PX * ROUTE_MIN_PX)
+            continue;
+
+        double sx = ax, sy = ay, ex = bx, ey = by;
+        if (clip_segment(&sx, &sy, &ex, &ey, x0, y0, x1, y1)) {
+            bool starts_inside = sx == ax && sy == ay;
+            if (!open || !starts_inside) {
+                if (nruns == ROUTE_MAX_RUNS || m + 2 > ROUTE_DRAW_MAX)
+                    break;
+                runs[nruns++] = m;
+                xy[m * 2] = (float)sx;
+                xy[m * 2 + 1] = (float)sy;
+                m++;
+            }
+            if (m == ROUTE_DRAW_MAX)
+                break;
+            xy[m * 2] = (float)ex;
+            xy[m * 2 + 1] = (float)ey;
+            m++;
+            open = ex == bx && ey == by;
+        } else {
+            open = false;
+        }
+        ax = bx;
+        ay = by;
+    }
+    runs[nruns] = m;
+
+    for (int pass = 0; pass < 2; pass++) {
+        for (int r = 0; r < nruns; r++) {
+            int count = runs[r + 1] - runs[r];
+            if (count >= 2)
+                ui_polyline(&xy[runs[r] * 2], count, pass == 0 ? 15 : 9, pass == 0 ? ROUTE_EDGE : ROUTE_COL);
+        }
+    }
+
+    /* Destino: punto final con borde blanco, si cae en pantalla. */
+    double dx = CONTENT_X + pts[(n - 1) * 2] * world - left;
+    double dy = pts[(n - 1) * 2 + 1] * world - top;
+    if (dx > x0 && dx < x1 && dy > y0 && dy < y1) {
+        ui_fill_circle((float)dx, (float)dy, 13, COL_WHITE);
+        ui_fill_circle((float)dx, (float)dy, 9, COL_RED);
+    }
+}
+
+static void format_distance(float m, char *buf, size_t n)
+{
+    if (m < 1000)
+        snprintf(buf, n, "%d m", (int)lroundf(m / 10) * 10);
+    else if (m < 100000) {
+        int tenths = (int)lroundf(m / 100);
+        snprintf(buf, n, "%d,%d km", tenths / 10, tenths % 10);
+    } else
+        snprintf(buf, n, "%d km", (int)lroundf(m / 1000));
+}
+
+static void format_duration(float s, char *buf, size_t n)
+{
+    int min = (int)lroundf(s / 60);
+    if (min < 1)
+        min = 1;
+    if (min < 60)
+        snprintf(buf, n, "%d min", min);
+    else
+        snprintf(buf, n, "%d h %02d min", min / 60, min % 60);
+}
+
+/* Recuadro inferior: lo que queda y la hora de llegada. */
+static void draw_route_info(const PhoneState *ps)
+{
+    char dist[24], dur[24], line1[64], line2[160];
+    format_distance(ps->route_left_m, dist, sizeof(dist));
+    format_duration(ps->route_left_s, dur, sizeof(dur));
+    snprintf(line1, sizeof(line1), "%s · %s", dist, dur);
+    if (ps->route_arrive[0])
+        snprintf(line2, sizeof(line2), "Llegada %s · %s", ps->route_arrive, ps->route_dest);
+    else
+        snprintf(line2, sizeof(line2), "%s", ps->route_dest);
+
+    float x = CONTENT_X + 132, y = SCREEN_H - 104, w = 400, h = 88;
+    ui_fill_round_rect(x, y, w, h, 20, (SDL_Color){20, 22, 28, 230});
+    ui_text_fit(FONT_CLOCK, line1, x + 18, y + 10, w - 36, COL_TEXT, ALIGN_LEFT);
+    ui_text_fit(FONT_SMALL, line2, x + 18, y + 54, w - 36, COL_TEXT_DIM, ALIGN_LEFT);
+}
+
 static void draw_arrow(float cx, float cy, float bearing)
 {
     /* Flecha de navegación girada según el rumbo (0 = norte, sentido horario). */
@@ -119,19 +277,24 @@ void maps_draw(App *app)
     double lat = ps->gps_valid ? ps->lat : FALLBACK_LAT;
     double lon = ps->gps_valid ? ps->lon : FALLBACK_LON;
 
-    /* Con navegación activa, la posición va más abajo para ver más carretera por delante. */
+    /* Con navegación o ruta, la posición va más abajo para ver más carretera por delante. */
     float cx = CONTENT_X + CONTENT_W / 2.0f;
-    float cy = ps->nav_active ? SCREEN_H * 0.62f : SCREEN_H / 2.0f;
+    float cy = ps->nav_active || ps->route_active ? SCREEN_H * 0.62f : SCREEN_H / 2.0f;
 
     double wx, wy;
     project(lat, lon, z, &wx, &wy);
     draw_tiles(wx, wy, z, cx, cy);
+
+    if (ps->route_active)
+        draw_route(ps, wx, wy, z, cx, cy);
 
     if (ps->gps_valid)
         draw_arrow(cx, cy, ps->bearing);
 
     if (ps->nav_active)
         draw_nav_banner(ps);
+    if (ps->route_active)
+        draw_route_info(ps);
 
     draw_zoom_button(ZOOM_IN_Y, true);
     draw_zoom_button(ZOOM_OUT_Y, false);

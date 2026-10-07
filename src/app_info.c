@@ -1,6 +1,7 @@
 /* Pantallas informativas: Tiempo y Ajustes. */
 
 #include "screens_internal.h"
+#include "audio.h"
 #include "sysinfo.h"
 
 #include <math.h>
@@ -73,9 +74,13 @@ void settings_draw(App *app)
     else
         snprintf(phone, sizeof(phone), "%s", ps->link == LINK_SEARCHING ? "Buscando…" : "Sin WiFi");
 
+    const char *sound = !ps->audio_active ? "Por el móvil"
+                      : audio_playing() ? "Por la Vita" : "Por la Vita (cargando…)";
+
     const char *rows[][2] = {
         { "Batería de la Vita", battery },
         { "Móvil", phone },
+        { "Sonido", sound },
         { "Red WiFi", ps->ssid[0] ? ps->ssid : "—" },
         { "Versión", APP_VERSION },
     };

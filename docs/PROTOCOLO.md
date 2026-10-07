@@ -39,6 +39,7 @@ muestra cuántas veces le ha llegado la pregunta de la Vita.
 | 1 | JSON en UTF-8 con un campo `"t"` que indica el mensaje |
 | 2 | Portada: `u32 art_id` + JPEG (300×300) |
 | 3 | Tesela de mapa: `u8 z`, `u32 x`, `u32 y` + PNG de 256×256 |
+| 4 | Sonido (móvil → Vita): PCM de 16 bits little endian, estéreo, 48 kHz, en trozos de 20 ms |
 
 Máximo 4 MB por trama. La Vita envía `ping` cada 3 s; el móvil responde `pong`. Si
 alguno de los dos no recibe nada en 12–15 s, corta y la Vita vuelve a conectar.
@@ -55,11 +56,23 @@ alguno de los dos no recibe nada en 12–15 s, corta y la Vita vuelve a conectar
 | `call` | `state` (`ringing` / `active` / `idle`), `name`, `number` |
 | `gps` | `lat`, `lon`, `speed` (m/s), `bearing` (grados) |
 | `nav` | `active`, `title`, `text`, `sub` (de la notificación de Google Maps, Waze…) |
+| `route` | `active`, `dest` (nombre), `dist` (m), `dur` (s), `arrive` ("HH:mm"), `pts` (`[lat0, lon0, lat1, lon1, …]`, 5 decimales, simplificada). Con `active: false` se borra; `arrived: true` si es porque se ha llegado. |
+| `route_left` | `dist` (m), `dur` (s), `arrive`, `idx` (primer punto de `pts` que queda por delante) |
+| `audio` | `active`, `rate` (48000), `ch` (2). Con `active: true` llegan tramas de tipo 4. |
 | `weather` | `temp`, `max`, `min`, `code` (WMO), `is_day`, `place` |
 | `tile_err` | `z`, `x`, `y` (no se pudo obtener la tesela) |
 
 Al recibir `hello` de la Vita, el móvil responde con su `hello` y el estado completo
-(batería, música con portada, notificaciones con `silent`, GPS, navegación, tiempo, llamada).
+(batería, música con portada, notificaciones con `silent`, GPS, navegación, ruta, tiempo, llamada,
+sonido).
+
+La ruta la calcula el móvil con OSRM. Se envía entera (`route`) al calcularla o recalcularla, y
+después, con cada posición, solo lo que queda (`route_left`). La Vita dibuja desde la flecha hasta
+el destino, a partir del punto `idx`.
+
+El sonido (experimental) son unos 1,5 Mbit/s. Si la WiFi se atasca, el móvil descarta trozos en
+vez de acumular retraso (como mucho 200 ms pendientes). La Vita espera a tener 150 ms antes de
+sonar y descarta lo acumulado por encima de 450 ms.
 
 ## Vita → móvil
 

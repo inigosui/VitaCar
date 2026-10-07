@@ -5,7 +5,7 @@
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 
-#define APP_VERSION   "0.2.2"
+#define APP_VERSION   "0.3.0"
 #define SCREEN_HOME   (-1)
 
 typedef enum {
@@ -41,6 +41,7 @@ typedef struct {
     PhoneNotif banner;
     Uint32 banner_until;
     CallState last_call;
+    Uint32 seen_arrived;
 
     char toast[64];
     Uint32 toast_until;

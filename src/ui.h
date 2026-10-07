@@ -44,6 +44,8 @@ void ui_fill_circle(float cx, float cy, float r, SDL_Color c);
 void ui_fill_arc(float cx, float cy, float r_in, float r_out, float a0, float a1, SDL_Color c);
 void ui_fill_triangle(float x1, float y1, float x2, float y2, float x3, float y3, SDL_Color c);
 void ui_line(float x1, float y1, float x2, float y2, float thick, SDL_Color c, bool round_caps);
+/* xy = {x0, y0, x1, y1, ...} con n puntos. */
+void ui_polyline(const float *xy, int n, float thick, SDL_Color c);
 
 /* src NULL = textura completa. */
 void ui_image(SDL_Texture *tex, const SDL_Rect *src, float x, float y, float w, float h);

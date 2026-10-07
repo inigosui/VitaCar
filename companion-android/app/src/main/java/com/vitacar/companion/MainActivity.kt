@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -29,8 +31,15 @@ import android.widget.TextView
 import android.widget.Toast
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
+
+    companion object {
+        private const val REQ_AUDIO_PERM = 10
+        private const val REQ_PROJECTION = 20
+        private const val KEY_AUDIO = "audio_vita"
+    }
 
     private class PermissionRow(
         val title: String,
@@ -52,6 +61,15 @@ class MainActivity : Activity() {
     private lateinit var vitaText: TextView
     private lateinit var ipText: TextView
     private lateinit var toggleButton: Button
+    private lateinit var routeText: TextView
+    private lateinit var routeStatus: TextView
+    private lateinit var clearRouteButton: Button
+    private lateinit var modeButtons: Map<RouteNavigator.Mode, Button>
+    private lateinit var searchField: EditText
+    private lateinit var searchButton: Button
+    private lateinit var results: LinearLayout
+    private var audioText: TextView? = null
+    private var audioButton: Button? = null
     private lateinit var rows: List<PermissionRow>
     private val main = Handler(Looper.getMainLooper())
     private val hubListener: () -> Unit = { refresh() }
@@ -60,6 +78,104 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         rows = buildPermissionRows()
         setContentView(buildUi())
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    // ---------- Sonido por la Vita ----------
+
+    private fun audioWanted() = getSharedPreferences(TileFetcher.PREFS, MODE_PRIVATE).getBoolean(KEY_AUDIO, false)
+
+    private fun setAudioWanted(on: Boolean) =
+        getSharedPreferences(TileFetcher.PREFS, MODE_PRIVATE).edit().putBoolean(KEY_AUDIO, on).apply()
+
+    /** Pide los dos permisos (micrófono, una vez; "emitir pantalla", cada vez) y activa el sonido. */
+    private fun requestAudio() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (granted(Manifest.permission.RECORD_AUDIO)) askProjection()
+        else requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_AUDIO_PERM)
+    }
+
+    private fun askProjection() {
+        val mpm = getSystemService(MediaProjectionManager::class.java)
+        // En Android 14+ se fuerza "toda la pantalla": con una sola app no se captura el sonido de las demás.
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+            mpm.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        else mpm.createScreenCaptureIntent()
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, REQ_PROJECTION)
+    }
+
+    @Deprecated("Activity sin AndroidX")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_PROJECTION) return
+        if (resultCode == RESULT_OK && data != null) {
+            setAudioWanted(true)
+            VitaService.startAudio(this, resultCode, data)
+        } else {
+            Toast.makeText(this, "Sin ese permiso el sonido sigue saliendo por el móvil.", Toast.LENGTH_LONG).show()
+        }
+        main.postDelayed(::refresh, 400)
+    }
+
+    // ---------- Destino compartido ----------
+
+    /** Google Maps › Compartir › VitaCar, o un enlace geo: abierto con VitaCar. */
+    private fun handleIntent(intent: Intent) {
+        val text = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> intent.dataString
+            else -> null
+        } ?: return
+        intent.action = null    // que no se repita al girar la pantalla
+        Toast.makeText(this, "Buscando el sitio compartido…", Toast.LENGTH_SHORT).show()
+        thread(name = "share", isDaemon = true) {
+            val dest = DestinationResolver.fromSharedText(applicationContext, text, RouteNavigator.lastLocation)
+            main.post {
+                if (dest != null) setDestination(dest)
+                else Toast.makeText(this, "No se ha encontrado ese sitio. Búscalo en «Ruta».", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun setDestination(dest: RouteNavigator.Destination) {
+        RouteNavigator.start(this, dest)
+        results.removeAllViews()
+        // Sin el servicio no hay GPS ni conexión con la Vita.
+        if (!VitaService.running) VitaService.start(this)
+        Toast.makeText(this, "Destino: ${dest.name}", Toast.LENGTH_SHORT).show()
+        main.postDelayed(::refresh, 400)
+    }
+
+    private fun search() {
+        val q = searchField.text.toString()
+        if (q.isBlank()) return
+        searchButton.isEnabled = false
+        results.removeAllViews()
+        results.addView(text("Buscando…", 13f, dim))
+        thread(name = "search", isDaemon = true) {
+            val found = DestinationResolver.search(applicationContext, q, RouteNavigator.lastLocation)
+            main.post {
+                searchButton.isEnabled = true
+                results.removeAllViews()
+                if (found.isEmpty()) results.addView(text("Sin resultados.", 13f, dim))
+                found.forEach { dest ->
+                    results.addView(Button(this).apply {
+                        text = dest.name
+                        isAllCaps = false
+                        gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                        setOnClickListener { setDestination(dest) }
+                    })
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -75,6 +191,11 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_AUDIO_PERM) {
+            if (granted(Manifest.permission.RECORD_AUDIO)) askProjection()
+            else Toast.makeText(this, "Sin ese permiso el sonido sigue saliendo por el móvil.", Toast.LENGTH_LONG).show()
+            return
+        }
         refresh()
         // El servicio solo usa los permisos que tenía al arrancar: reiniciarlo.
         if (VitaService.running) {
@@ -188,12 +309,113 @@ class MainActivity : Activity() {
         status.addView(ipText)
         toggleButton = Button(this).apply {
             setOnClickListener {
-                if (VitaService.running) VitaService.stop(this@MainActivity) else VitaService.start(this@MainActivity)
+                if (VitaService.running) {
+                    VitaService.stop(this@MainActivity)
+                } else {
+                    VitaService.start(this@MainActivity)
+                    // Android pide el permiso de "emitir pantalla" cada vez.
+                    if (audioWanted()) requestAudio()
+                }
                 main.postDelayed(::refresh, 400)
             }
         }
         status.addView(toggleButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
         root.addView(status)
+
+        // Ruta
+        root.addView(header("Ruta"))
+        val route = cardLayout()
+        routeText = text("", 16f, bold = true)
+        routeStatus = text("", 13f, dim)
+        route.addView(routeText)
+        route.addView(routeStatus)
+        clearRouteButton = Button(this).apply {
+            text = "Quitar ruta"
+            setOnClickListener {
+                RouteNavigator.clear()
+                refresh()
+            }
+        }
+        route.addView(clearRouteButton)
+        val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        modeButtons = RouteNavigator.Mode.entries.associateWith { mode ->
+            Button(this).apply {
+                setOnClickListener {
+                    RouteNavigator.setMode(this@MainActivity, mode)
+                    refresh()
+                }
+                modes.addView(this, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            }
+        }
+        route.addView(modes)
+        val searchRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        searchField = EditText(this).apply {
+            hint = "Destino: dirección o sitio"
+            setTextColor(Color.WHITE)
+            setHintTextColor(dim)
+            textSize = 15f
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
+            setOnEditorActionListener { _, _, _ -> search(); true }
+        }
+        searchRow.addView(searchField, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        searchButton = Button(this).apply {
+            text = "Buscar"
+            setOnClickListener { search() }
+        }
+        searchRow.addView(searchButton)
+        route.addView(searchRow)
+        results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        route.addView(results)
+        route.addView(
+            text(
+                "También puedes elegir un sitio en Google Maps y pulsar Compartir › VitaCar. " +
+                    "La ruta se calcula con OpenStreetMap (OSRM) y se recalcula si te desvías. " +
+                    "Si a la vez navegas con Google Maps, sus indicaciones pueden seguir otro camino.",
+                12f, dim,
+            ).apply { setPadding(0, dp(8), 0, 0) },
+        )
+        root.addView(route)
+
+        // Sonido
+        root.addView(header("Sonido por la Vita (experimental)"))
+        val sound = cardLayout()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            audioText = text("", 16f, bold = true)
+            sound.addView(audioText)
+            audioButton = Button(this).apply {
+                setOnClickListener {
+                    // Mismos casos que el texto del botón en refresh().
+                    val turnOff = VitaHub.audioActive || (audioWanted() && !VitaService.running)
+                    if (turnOff) {
+                        setAudioWanted(false)
+                        VitaService.stopAudio(this@MainActivity)
+                        main.postDelayed(::refresh, 400)
+                    } else {
+                        requestAudio()
+                    }
+                }
+            }
+            sound.addView(audioButton)
+            sound.addView(
+                text(
+                    "Envía a la Vita el sonido de las apps, para oírlo por su altavoz, por auriculares o por " +
+                        "un transmisor Bluetooth. Límites de Android:\n" +
+                        "• Spotify y otras apps no dejan capturar su sonido.\n" +
+                        "• No se capturan las llamadas ni la voz de Google Maps.\n" +
+                        "• Android pide permiso para «emitir pantalla» cada vez que pulsas Iniciar " +
+                        "(solo se usa el sonido, no la imagen).\n" +
+                        "• Hay un pequeño retraso y gasta más batería. Baja el volumen del móvil si suena por los dos.",
+                    12f, dim,
+                ).apply { setPadding(0, dp(8), 0, 0) },
+            )
+        } else {
+            sound.addView(text("Necesita Android 10 o superior.", 13f, dim))
+        }
+        root.addView(sound)
 
         // Permisos
         root.addView(header("Permisos"))
@@ -277,11 +499,14 @@ class MainActivity : Activity() {
         return ScrollView(this).apply {
             setBackgroundColor(bg)
             addView(root)
-            // Android 15 dibuja bajo las barras del sistema: dejar su hueco.
-            setOnApplyWindowInsetsListener { v, insets ->
-                val bars = insets.getInsets(WindowInsets.Type.systemBars())
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
+            // Android 15 dibuja bajo las barras del sistema: dejar su hueco. Antes de Android 11
+            // no existe esta API (y no hace falta: el sistema ya deja el hueco).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                setOnApplyWindowInsetsListener { v, insets ->
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                    v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                    insets
+                }
             }
         }
     }
@@ -303,6 +528,32 @@ class MainActivity : Activity() {
             else "Direcciones de este móvil: " + it.joinToString("  ·  ")
         }
         toggleButton.text = if (running) "Detener" else "Iniciar"
+
+        val dest = RouteNavigator.destination
+        routeText.text = dest?.let { "Hacia ${it.name}" } ?: "Sin destino"
+        routeText.setTextColor(if (dest != null) Color.WHITE else dim)
+        routeStatus.text = RouteNavigator.status
+        routeStatus.visibility = if (RouteNavigator.status.isEmpty()) View.GONE else View.VISIBLE
+        clearRouteButton.visibility = if (dest != null) View.VISIBLE else View.GONE
+        audioText?.let {
+            val wanted = audioWanted()
+            it.text = when {
+                VitaHub.audioActive -> "● Activado: el sonido de las apps va a la Vita"
+                wanted && running -> "● Activado, pero sin permiso: pulsa «Volver a activar»"
+                wanted -> "● Activado: se pedirá permiso al pulsar «Iniciar»"
+                else -> "● Desactivado: el sonido sale por el móvil"
+            }
+            it.setTextColor(if (VitaHub.audioActive) green else if (wanted) amber else dim)
+        }
+        audioButton?.text = when {
+            VitaHub.audioActive -> "Desactivar"
+            audioWanted() && running -> "Volver a activar"
+            audioWanted() -> "Desactivar"
+            else -> "Activar"
+        }
+
+        val mode = RouteNavigator.mode(this)
+        modeButtons.forEach { (m, b) -> b.text = if (m == mode) "● ${m.label}" else m.label }
 
         for (row in rows) {
             val ok = row.isGranted()

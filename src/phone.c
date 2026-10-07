@@ -1,7 +1,9 @@
 #include "phone.h"
+#include "audio.h"
 #include "net.h"
 
 #include <SDL2/SDL_image.h>
+#include <math.h>
 #include "third_party/cjson/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +12,10 @@
 #define FRAME_JSON          1
 #define FRAME_ART           2
 #define FRAME_TILE          3
+#define FRAME_AUDIO         4
 #define MAX_FRAME           (4 * 1024 * 1024)
+#define MAX_ROUTE_POINTS    20000
+#define PI_D                3.14159265358979323846
 
 #define CONNECT_TIMEOUT_MS  3000
 #define RETRY_MS            2000
@@ -42,6 +47,13 @@ static int g_art_id;                /* id de portada anunciado en el último "me
 static SDL_Texture *g_art;
 static int g_art_tex_id;
 static int g_wanted_art;            /* copia de g_art_id para el hilo principal */
+
+/* Ruta: el hilo de red deja la nueva en g_route_new (con g_lock) y phone_poll la pasa a g_route. */
+static double *g_route_new;
+static int g_route_new_n;
+static bool g_route_new_ready;
+static double *g_route;             /* solo el hilo principal */
+static int g_route_n;
 
 /* ---------- Envío ---------- */
 
@@ -155,6 +167,42 @@ static void handle_notif(const cJSON *msg)
         g_shared.notif_seq++;
 }
 
+/* Sustituye la ruta pendiente. Con g_lock tomado. */
+static void set_pending_route(double *pts, int n)
+{
+    free(g_route_new);
+    g_route_new = pts;
+    g_route_new_n = n;
+    g_route_new_ready = true;
+}
+
+/* "pts" = [lat0, lon0, lat1, lon1, ...]. Se convierte aquí a Web Mercator para no
+ * repetir senos y logaritmos en cada frame. Se hace fuera de g_lock: puede tardar. */
+static double *parse_route_points(const cJSON *msg, int *count)
+{
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(msg, "pts");
+    int n = cJSON_IsArray(arr) ? cJSON_GetArraySize(arr) / 2 : 0;
+    if (n > MAX_ROUTE_POINTS)
+        n = MAX_ROUTE_POINTS;
+    *count = 0;
+    if (n < 2)
+        return NULL;
+    double *pts = malloc(sizeof(double) * 2 * n);
+    if (!pts)
+        return NULL;
+    const cJSON *v = arr->child;
+    for (int i = 0; i < n && v && v->next; i++, v = v->next->next) {
+        double lat = v->valuedouble, lon = v->next->valuedouble;
+        if (lat > 85.0) lat = 85.0;
+        if (lat < -85.0) lat = -85.0;
+        double lat_r = lat * PI_D / 180.0;
+        pts[i * 2] = (lon + 180.0) / 360.0;
+        pts[i * 2 + 1] = (1.0 - log(tan(lat_r) + 1.0 / cos(lat_r)) / PI_D) / 2.0;
+        *count = i + 1;
+    }
+    return pts;
+}
+
 static void handle_json(const char *text, int len)
 {
     cJSON *msg = cJSON_ParseWithLength(text, len);
@@ -171,6 +219,12 @@ static void handle_json(const char *text, int len)
         cJSON_Delete(msg);
         return;
     }
+
+    int route_n = 0;
+    double *route_pts = NULL;
+    bool route_on = strcmp(t, "route") == 0 && jbool(msg, "active", false);
+    if (route_on)
+        route_pts = parse_route_points(msg, &route_n);
 
     SDL_LockMutex(g_lock);
     PhoneState *s = &g_shared;
@@ -218,6 +272,24 @@ static void handle_json(const char *text, int len)
         jstr(msg, "title", s->nav_title, sizeof(s->nav_title));
         jstr(msg, "text", s->nav_text, sizeof(s->nav_text));
         jstr(msg, "sub", s->nav_sub, sizeof(s->nav_sub));
+    } else if (strcmp(t, "route") == 0) {
+        s->route_active = route_on && route_n >= 2;
+        jstr(msg, "dest", s->route_dest, sizeof(s->route_dest));
+        s->route_left_m = (float)jnum(msg, "dist", 0);
+        s->route_left_s = (float)jnum(msg, "dur", 0);
+        jstr(msg, "arrive", s->route_arrive, sizeof(s->route_arrive));
+        s->route_idx = 0;
+        if (!route_on && jbool(msg, "arrived", false))
+            s->route_arrived++;
+        set_pending_route(route_pts, route_n);
+        route_pts = NULL;
+    } else if (strcmp(t, "route_left") == 0) {
+        s->route_left_m = (float)jnum(msg, "dist", 0);
+        s->route_left_s = (float)jnum(msg, "dur", 0);
+        jstr(msg, "arrive", s->route_arrive, sizeof(s->route_arrive));
+        s->route_idx = (int)jnum(msg, "idx", 0);
+    } else if (strcmp(t, "audio") == 0) {
+        s->audio_active = jbool(msg, "active", false);
     } else if (strcmp(t, "weather") == 0) {
         s->weather_valid = true;
         s->temp = (float)jnum(msg, "temp", 0);
@@ -233,6 +305,7 @@ static void handle_json(const char *text, int len)
         return;
     }
     SDL_UnlockMutex(g_lock);
+    free(route_pts);
     cJSON_Delete(msg);
 }
 
@@ -257,6 +330,8 @@ static void handle_frame(int type, Uint8 *data, int len)
         SDL_UnlockMutex(g_lock);
     } else if (type == FRAME_TILE && len > 9) {
         tiles_on_phone_tile(data[0], (int)read_be32(data + 1), (int)read_be32(data + 5), data + 9, len - 9);
+    } else if (type == FRAME_AUDIO) {
+        audio_feed(data, len);
     }
 }
 
@@ -428,6 +503,9 @@ static void reset_session_state(void)
     g_shared.playing = false;
     g_shared.call = CALL_IDLE;
     g_shared.nav_active = false;
+    g_shared.route_active = false;      /* el móvil la reenvía al volver a conectar */
+    g_shared.audio_active = false;
+    set_pending_route(NULL, 0);
     g_shared.battery = -1;
     g_art_id = 0;
     SDL_UnlockMutex(g_lock);
@@ -495,6 +573,7 @@ void phone_start(void)
     g_shared.battery = -1;
     g_shared.link = LINK_NO_WIFI;
     g_snap = g_shared;
+    audio_init();
     SDL_AtomicSet(&g_quit, 0);
     if (!net_init()) {
         SDL_Log("No se pudo iniciar la red");
@@ -513,12 +592,17 @@ void phone_stop(void)
     if (g_thread)
         SDL_WaitThread(g_thread, NULL);
     g_thread = NULL;
+    audio_shutdown();
     if (g_art)
         SDL_DestroyTexture(g_art);
     if (g_pending_art)
         SDL_FreeSurface(g_pending_art);
     g_art = NULL;
     g_pending_art = NULL;
+    free(g_route);
+    free(g_route_new);
+    g_route = g_route_new = NULL;
+    g_route_n = g_route_new_n = 0;
     net_shutdown();
     SDL_DestroyMutex(g_lock);
     SDL_DestroyMutex(g_send_lock);
@@ -533,7 +617,17 @@ void phone_poll(SDL_Renderer *renderer)
     int art_id = g_pending_art_id;
     g_pending_art = NULL;
     g_wanted_art = g_snap.media_active ? g_art_id : 0;
+    if (g_route_new_ready) {
+        free(g_route);
+        g_route = g_route_new;
+        g_route_n = g_route_new_n;
+        g_route_new = NULL;
+        g_route_new_n = 0;
+        g_route_new_ready = false;
+    }
     SDL_UnlockMutex(g_lock);
+
+    audio_update(g_snap.audio_active);
 
     if (art) {
         if (g_art)
@@ -563,6 +657,12 @@ int phone_media_position_ms(void)
     if (g_snap.duration_ms > 0 && pos > g_snap.duration_ms)
         pos = g_snap.duration_ms;
     return pos;
+}
+
+int phone_route(const double **xy)
+{
+    *xy = g_route;
+    return g_snap.route_active ? g_route_n : 0;
 }
 
 void phone_media_cmd(const char *action)

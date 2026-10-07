@@ -16,7 +16,7 @@ project(VitaCar C)
 
 set(VITA_APP_NAME "VitaCar")
 set(VITA_TITLEID  "VCAR00001")
-set(VITA_VERSION  "00.02")
+set(VITA_VERSION  "00.03")
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -O2")
@@ -34,6 +34,7 @@ add_executable(${PROJECT_NAME}
   src/sysinfo.c
   src/net.c
   src/phone.c
+  src/audio.c
   src/tiles.c
   src/third_party/cjson/cJSON.c
 )

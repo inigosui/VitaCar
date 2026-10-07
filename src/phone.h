@@ -79,6 +79,17 @@ typedef struct {
     char nav_text[256];
     char nav_sub[160];
 
+    /* Ruta propia calculada por el móvil. Los puntos se leen con phone_route(). */
+    bool route_active;
+    char route_dest[96];
+    float route_left_m;     /* lo que queda hasta el destino */
+    float route_left_s;
+    char route_arrive[8];   /* hora de llegada "HH:mm", hora local del móvil */
+    int route_idx;          /* primer punto que queda por delante; lo anterior ya está recorrido */
+    Uint32 route_arrived;   /* sube cada vez que se llega al destino */
+
+    bool audio_active;      /* el móvil está enviando su sonido */
+
     bool weather_valid;
     float temp, temp_max, temp_min;
     int weather_code;       /* código WMO */
@@ -94,6 +105,8 @@ void phone_poll(SDL_Renderer *renderer);
 const PhoneState *phone_state(void);
 SDL_Texture *phone_album_art(void);
 int phone_media_position_ms(void);
+/* Puntos de la ruta en Web Mercator normalizado (0..1): {x0, y0, x1, y1, ...}. Devuelve cuántos hay. */
+int phone_route(const double **xy);
 
 void phone_media_cmd(const char *action);       /* "play_pause", "next", "prev" */
 void phone_reply(const char *id, const char *text);
