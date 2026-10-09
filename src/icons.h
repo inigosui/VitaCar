@@ -16,6 +16,7 @@ typedef enum {
     ICON_NEXT,
     ICON_CLOUD,
     ICON_RAIN,
+    ICON_CALENDAR,
 } IconId;
 
 /* Dibuja el glifo centrado en (cx, cy) dentro de un cuadrado de lado s.

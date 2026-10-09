@@ -115,6 +115,7 @@ class VitaService : Service() {
             ?: "${Build.MANUFACTURER} ${Build.MODEL}"
         VitaHub.setDeviceName(name)
         VitaHub.commandHandler = ::handleCommand
+        AgendaStore.init(this)
         VitaHub.addListener(hubListener)
 
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)

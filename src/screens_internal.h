@@ -11,7 +11,7 @@
 #define CONTENT_X     SIDEBAR_W
 #define CONTENT_W     (SCREEN_W - SIDEBAR_W)
 
-enum { APP_MUSIC, APP_MAPS, APP_PHONE, APP_MESSAGES, APP_WEATHER, APP_SETTINGS, APP_COUNT };
+enum { APP_MUSIC, APP_MAPS, APP_PHONE, APP_MESSAGES, APP_AGENDA, APP_WEATHER, APP_SETTINGS, APP_COUNT };
 
 typedef struct {
     const char *name;
@@ -51,6 +51,13 @@ void messages_touch(App *app, float x, float y);
 void messages_open(App *app, const char *id);
 void messages_swipe(App *app, float dy);
 
+void agenda_draw(App *app);
+bool agenda_input(App *app, InputAction action);
+void agenda_touch(App *app, float x, float y);
+
 void weather_draw(App *app);
+/* Texto e icono de un código meteorológico WMO. */
+const char *weather_text(int code);
+IconId weather_icon(int code);
 
 void settings_draw(App *app);

@@ -12,8 +12,8 @@
 </p>
 
 VitaCar es una app homebrew para PS Vita y una app compañera para Android. El móvil envía a
-la Vita la música, los mensajes, las llamadas, el GPS, las indicaciones de navegación y el
-tiempo, y desde la Vita se controla todo con la pantalla táctil o los botones.
+la Vita la música, los mensajes, las llamadas, el GPS, las indicaciones de navegación, el
+tiempo y tu agenda, y desde la Vita se controla todo con la pantalla táctil o los botones.
 
 > **Estado: en pruebas.** Ya se ha probado en una PS Vita y un móvil Android reales: la conexión
 > automática, la música, los controles y las indicaciones de Google Maps funcionan. Aún hay limitaciones conocidas
@@ -84,6 +84,17 @@ de Android:
   sonido, no la imagen.
 - Gasta más batería. El móvil sigue sonando: baja su volumen a 0.
 
+### Agenda
+
+En la app del móvil, **Agenda › Abrir agenda**. Toca un día y pulsa **Añadir nota** (o toca dos
+veces el día): título, detalles, hora (o todo el día) y color. Toca una nota para editarla o
+borrarla.
+
+En la Vita, la app **Agenda** muestra el calendario del mes con cada día que tiene notas pintado
+del color de su primera nota (y un punto por nota si hay varias). A la derecha, un reloj grande,
+el tiempo previsto para el día elegido (hasta unos 15 días) y sus notas. La Vita guarda la última
+copia en `ux0:data/VitaCar/agenda.json`, así que la agenda se ve también sin el móvil.
+
 ## Qué hace cada app
 
 | App | Funciona con |
@@ -92,6 +103,7 @@ de Android:
 | Mapas | GPS del móvil, mapa de OpenStreetMap en modo noche, velocidad, zoom; ruta propia dibujada con distancia, tiempo y hora de llegada; indicaciones (texto) de Google Maps / Waze cuando hay una ruta activa en el móvil |
 | Teléfono | Estado de la conexión; llamada entrante a pantalla completa (contestar / rechazar); colgar |
 | Mensajes | Notificaciones del móvil, aviso emergente, respuestas rápidas (WhatsApp, Telegram…), borrar |
+| Agenda | Calendario del mes con las notas del móvil por colores, reloj, pronóstico y notas del día elegido |
 | Tiempo | Open-Meteo según tu ubicación |
 | Ajustes | Batería, móvil conectado, por dónde sale el sonido, red |
 
@@ -122,10 +134,10 @@ las zonas ya vistas funcionan después sin conexión.
 | Botón | Acción |
 |---|---|
 | Pantalla táctil | Todo; deslizar para recorrer los mensajes |
-| Cruceta | Mover el foco · en Mapas: zoom |
-| X | Abrir / pulsar · contestar llamada |
+| Cruceta | Mover el foco · en Mapas: zoom · en Agenda: cambiar de día |
+| X | Abrir / pulsar · contestar llamada · en Agenda: volver a hoy |
 | O | Volver |
-| L / R | Pista anterior / siguiente · en Mapas: zoom |
+| L / R | Pista anterior / siguiente · en Mapas: zoom · en Agenda: mes anterior / siguiente |
 
 ## Compilar
 
@@ -156,7 +168,8 @@ Firmado con la clave de depuración (uso personal, no Play Store).
 ```
 src/main.c           Bucle principal y entrada
 src/screens.c        Barra lateral, inicio, avisos emergentes, llamada entrante
-src/app_*.c          Música, Mapas, Teléfono, Mensajes, Tiempo y Ajustes
+src/app_*.c          Música, Mapas, Teléfono, Mensajes, Agenda, Tiempo y Ajustes
+src/agenda.c         Notas de la agenda (llegan del móvil y se guardan en la tarjeta)
 src/phone.c          Conexión con el móvil (hilo de red, protocolo, estado)
 src/audio.c          Sonido del móvil por la Vita (experimental)
 src/net.c            Sockets: sceNet en la Vita, POSIX en el PC

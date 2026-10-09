@@ -1,4 +1,5 @@
 #include "phone.h"
+#include "agenda.h"
 #include "audio.h"
 #include "net.h"
 
@@ -203,6 +204,26 @@ static double *parse_route_points(const cJSON *msg, int *count)
     return pts;
 }
 
+/* "days": [{date: "2026-10-09", code, max, min}, ...]. Con g_lock tomado. */
+static void parse_forecast(const cJSON *msg, PhoneState *s)
+{
+    const cJSON *days = cJSON_GetObjectItemCaseSensitive(msg, "days");
+    const cJSON *d;
+    s->forecast_count = 0;
+    cJSON_ArrayForEach(d, days) {
+        if (s->forecast_count == PHONE_MAX_DAYS)
+            break;
+        WeatherDay *w = &s->forecast[s->forecast_count];
+        const char *date = jstr_ptr(d, "date");
+        if (!date || sscanf(date, "%d-%d-%d", &w->year, &w->month, &w->day) != 3)
+            continue;
+        w->code = (int)jnum(d, "code", 0);
+        w->max = (float)jnum(d, "max", 0);
+        w->min = (float)jnum(d, "min", 0);
+        s->forecast_count++;
+    }
+}
+
 static void handle_json(const char *text, int len)
 {
     cJSON *msg = cJSON_ParseWithLength(text, len);
@@ -216,6 +237,11 @@ static void handle_json(const char *text, int len)
 
     if (strcmp(t, "ping") == 0) {
         send_simple("pong", NULL, NULL);
+        cJSON_Delete(msg);
+        return;
+    }
+    if (strcmp(t, "agenda") == 0) {
+        agenda_on_json(msg);
         cJSON_Delete(msg);
         return;
     }
@@ -298,6 +324,7 @@ static void handle_json(const char *text, int len)
         s->weather_code = (int)jnum(msg, "code", 0);
         s->is_day = jbool(msg, "is_day", true);
         jstr(msg, "place", s->place, sizeof(s->place));
+        parse_forecast(msg, s);
     } else if (strcmp(t, "tile_err") == 0) {
         SDL_UnlockMutex(g_lock);
         tiles_on_phone_tile((int)jnum(msg, "z", 0), (int)jnum(msg, "x", 0), (int)jnum(msg, "y", 0), NULL, 0);

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define HOME_COLS     3
+#define HOME_COLS     4
 #define HOME_TILE     132
 
 #define DOCK_TILE     62
@@ -22,6 +22,7 @@ const AppDef APPS[APP_COUNT] = {
     [APP_MAPS]     = { "Mapas",    ICON_MAPS,     { 10, 132, 255, 255}, maps_draw,      maps_input,      maps_touch },
     [APP_PHONE]    = { "Teléfono", ICON_PHONE,    { 48, 199,  89, 255}, phone_app_draw, phone_app_input, phone_app_touch },
     [APP_MESSAGES] = { "Mensajes", ICON_MESSAGES, { 94,  92, 230, 255}, messages_draw,  messages_input,  messages_touch },
+    [APP_AGENDA]   = { "Agenda",   ICON_CALENDAR, {  0, 190, 180, 255}, agenda_draw,    agenda_input,    agenda_touch },
     [APP_WEATHER]  = { "Tiempo",   ICON_WEATHER,  {255, 159,  10, 255}, weather_draw,   NULL,            NULL },
     [APP_SETTINGS] = { "Ajustes",  ICON_SETTINGS, {120, 124, 134, 255}, settings_draw,  NULL,            NULL },
 };
@@ -59,6 +60,8 @@ void open_app(App *app, int index)
     app->current = index;
     if (index == APP_MESSAGES)
         app->unread = 0;
+    if (index == APP_AGENDA)
+        app->agenda.year = 0;   /* se abre siempre en el día de hoy */
 }
 
 void draw_button(float x, float y, float w, float h, const char *label, SDL_Color bg, bool focused)

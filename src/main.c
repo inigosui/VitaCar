@@ -1,3 +1,4 @@
+#include "agenda.h"
 #include "app.h"
 #include "phone.h"
 #include "screens.h"
@@ -78,6 +79,7 @@ int main(int argc, char *argv[])
     if (!ui_init(renderer, ASSET_PATH "fonts/NotoSans-Regular.ttf", ASSET_PATH "fonts/NotoSans-Bold.ttf"))
         return 1;
 
+    agenda_init();
     phone_start();
     tiles_init(renderer);
 
@@ -130,6 +132,7 @@ int main(int argc, char *argv[])
 
         Uint32 now = SDL_GetTicks();
         phone_poll(renderer);
+        agenda_poll();
         tiles_update();
         screens_update(&app, (now - last_ticks) / 1000.0f);
         last_ticks = now;
@@ -155,6 +158,7 @@ int main(int argc, char *argv[])
         SDL_JoystickClose(pad);
     tiles_shutdown();
     phone_stop();
+    agenda_shutdown();
     ui_shutdown();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

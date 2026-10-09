@@ -10,7 +10,7 @@
 /* ---------- Tiempo ---------- */
 
 /* Códigos meteorológicos WMO que devuelve Open-Meteo. */
-static const char *weather_text(int code)
+const char *weather_text(int code)
 {
     if (code == 0) return "Despejado";
     if (code <= 2) return "Poco nuboso";
@@ -24,7 +24,7 @@ static const char *weather_text(int code)
     return "Tormenta";
 }
 
-static IconId weather_icon(int code)
+IconId weather_icon(int code)
 {
     if (code <= 2) return ICON_WEATHER;
     if (code <= 48) return ICON_CLOUD;

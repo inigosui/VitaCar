@@ -5,7 +5,7 @@
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 
-#define APP_VERSION   "0.3.0"
+#define APP_VERSION   "0.4.0"
 #define SCREEN_HOME   (-1)
 
 typedef enum {
@@ -28,6 +28,10 @@ typedef struct {
 } MessagesState;
 
 typedef struct {
+    int year, month, day;   /* día seleccionado; year 0 = aún no se ha abierto */
+} AgendaState;
+
+typedef struct {
     bool running;
     int current;        /* índice en APPS o SCREEN_HOME */
     int home_focus;
@@ -35,6 +39,7 @@ typedef struct {
     int map_zoom;
     int call_focus;     /* 0 rechazar, 1 contestar */
     MessagesState msg;
+    AgendaState agenda;
 
     Uint32 seen_notif_seq;
     int unread;

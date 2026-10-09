@@ -59,12 +59,16 @@ alguno de los dos no recibe nada en 12–15 s, corta y la Vita vuelve a conectar
 | `route` | `active`, `dest` (nombre), `dist` (m), `dur` (s), `arrive` ("HH:mm"), `pts` (`[lat0, lon0, lat1, lon1, …]`, 5 decimales, simplificada). Con `active: false` se borra; `arrived: true` si es porque se ha llegado. |
 | `route_left` | `dist` (m), `dur` (s), `arrive`, `idx` (primer punto de `pts` que queda por delante) |
 | `audio` | `active`, `rate` (48000), `ch` (2). Con `active: true` llegan tramas de tipo 4. |
-| `weather` | `temp`, `max`, `min`, `code` (WMO), `is_day`, `place` |
+| `weather` | `temp`, `max`, `min`, `code` (WMO), `is_day`, `place`, `days` (pronóstico desde hoy: `[{date: "AAAA-MM-DD", code, max, min}, …]`, hasta 16) |
+| `agenda` | `notes`: `[{id, date: "AAAA-MM-DD", time ("HH:mm" o ""), title, text, color (0–7)}, …]`, todas las notas (hasta 256). Se envía entera con cada cambio. |
 | `tile_err` | `z`, `x`, `y` (no se pudo obtener la tesela) |
 
 Al recibir `hello` de la Vita, el móvil responde con su `hello` y el estado completo
 (batería, música con portada, notificaciones con `silent`, GPS, navegación, ruta, tiempo, llamada,
-sonido).
+agenda, sonido).
+
+Los colores de la agenda son, por índice: verde, azul, rojo, naranja, amarillo, morado, rosa y gris.
+La Vita guarda el último `agenda` en `ux0:data/VitaCar/agenda.json` y lo carga al arrancar.
 
 La ruta la calcula el móvil con OSRM. Se envía entera (`route`) al calcularla o recalcularla, y
 después, con cada posición, solo lo que queda (`route_left`). La Vita dibuja desde la flecha hasta

@@ -30,6 +30,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.net.Inet4Address
+import java.time.LocalDate
 import java.net.NetworkInterface
 import kotlin.concurrent.thread
 
@@ -61,6 +62,7 @@ class MainActivity : Activity() {
     private lateinit var vitaText: TextView
     private lateinit var ipText: TextView
     private lateinit var toggleButton: Button
+    private lateinit var agendaText: TextView
     private lateinit var routeText: TextView
     private lateinit var routeStatus: TextView
     private lateinit var clearRouteButton: Button
@@ -76,6 +78,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AgendaStore.init(this)
         rows = buildPermissionRows()
         setContentView(buildUi())
         handleIntent(intent)
@@ -322,6 +325,24 @@ class MainActivity : Activity() {
         status.addView(toggleButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
         root.addView(status)
 
+        // Agenda y tiempo
+        root.addView(header("Agenda"))
+        val agenda = cardLayout()
+        agendaText = text("", 15f)
+        agenda.addView(agendaText)
+        agenda.addView(Button(this).apply {
+            text = "Abrir agenda"
+            setOnClickListener { startActivity(Intent(this@MainActivity, AgendaActivity::class.java)) }
+        })
+        agenda.addView(
+            text(
+                "Apunta citas y notas por colores. En la app Agenda de la Vita salen los días marcados " +
+                    "con su color, el reloj y el tiempo previsto para el día que elijas.",
+                12f, dim,
+            ).apply { setPadding(0, dp(8), 0, 0) },
+        )
+        root.addView(agenda)
+
         // Ruta
         root.addView(header("Ruta"))
         val route = cardLayout()
@@ -528,6 +549,21 @@ class MainActivity : Activity() {
             else "Direcciones de este móvil: " + it.joinToString("  ·  ")
         }
         toggleButton.text = if (running) "Detener" else "Iniciar"
+
+        val today = LocalDate.now()
+        val todayNotes = AgendaStore.forDate(today.toString())
+        val forecast = AgendaActivity.forecastFor(today)
+        agendaText.text = buildString {
+            append("Hoy: ")
+            append(
+                when (todayNotes.size) {
+                    0 -> "sin notas"
+                    1 -> "1 nota (${todayNotes[0].title.ifBlank { "Nota" }})"
+                    else -> "${todayNotes.size} notas"
+                },
+            )
+            if (forecast != null) append("\n$forecast")
+        }
 
         val dest = RouteNavigator.destination
         routeText.text = dest?.let { "Hacia ${it.name}" } ?: "Sin destino"

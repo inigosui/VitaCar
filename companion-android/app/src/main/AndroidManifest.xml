@@ -58,6 +58,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".AgendaActivity"
+            android:exported="false"
+            android:label="Agenda" />
+
         <service
             android:name=".VitaService"
             android:exported="false"

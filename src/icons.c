@@ -124,6 +124,25 @@ static void draw_rain(float cx, float cy, float s, SDL_Color fg)
     }
 }
 
+static void draw_calendar(float cx, float cy, float s, SDL_Color fg, SDL_Color bg)
+{
+    /* Hoja con la franja de arriba, dos anillas y una cuadrícula de días. */
+    float w = s * 0.84f, h = s * 0.74f;
+    float x = cx - w / 2, y = cy - h / 2 + s * 0.06f;
+    float edge = s * 0.07f, top = y + h * 0.28f;
+    ui_fill_round_rect(x, y, w, h, s * 0.12f, fg);
+    ui_fill_round_rect(x + edge, top, w - 2 * edge, y + h - edge - top, s * 0.05f, bg);
+    for (int i = -1; i <= 1; i += 2)
+        ui_fill_round_rect(cx + i * w * 0.25f - s * 0.05f, y - s * 0.10f, s * 0.10f, s * 0.20f, s * 0.05f, fg);
+
+    float gw = w - 2 * edge, gh = y + h - edge - top, d = s * 0.11f;
+    for (int i = 0; i < 6; i++) {
+        float dx = x + edge + gw * ((i % 3) + 0.5f) / 3;
+        float dy = top + gh * ((i / 3) + 0.5f) / 2;
+        ui_fill_round_rect(dx - d / 2, dy - d / 2, d, d, d * 0.25f, fg);
+    }
+}
+
 void icon_draw(IconId id, float cx, float cy, float s, SDL_Color fg, SDL_Color bg)
 {
     switch (id) {
@@ -140,6 +159,7 @@ void icon_draw(IconId id, float cx, float cy, float s, SDL_Color fg, SDL_Color b
     case ICON_NEXT:     draw_skip(cx, cy, s, fg, 1); break;
     case ICON_CLOUD:    draw_cloud(cx, cy, s, fg); break;
     case ICON_RAIN:     draw_rain(cx, cy, s, fg); break;
+    case ICON_CALENDAR: draw_calendar(cx, cy, s, fg, bg); break;
     }
 }
 

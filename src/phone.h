@@ -7,6 +7,7 @@
 
 #define PHONE_PORT        47474
 #define PHONE_MAX_NOTIFS  24
+#define PHONE_MAX_DAYS    16
 
 typedef enum {
     LINK_NO_WIFI,       /* la Vita no está conectada a ninguna WiFi */
@@ -28,6 +29,13 @@ typedef struct {
     char time_str[8];       /* "14:05", hora local del móvil */
     bool can_reply;
 } PhoneNotif;
+
+/* Pronóstico de un día (Open-Meteo). */
+typedef struct {
+    int year, month, day;
+    int code;               /* código WMO */
+    float max, min;
+} WeatherDay;
 
 typedef enum {
     TARGET_NONE,
@@ -95,6 +103,8 @@ typedef struct {
     int weather_code;       /* código WMO */
     bool is_day;
     char place[64];
+    WeatherDay forecast[PHONE_MAX_DAYS];    /* desde hoy, en orden */
+    int forecast_count;
 } PhoneState;
 
 void phone_start(void);

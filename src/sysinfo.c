@@ -23,6 +23,15 @@ void sys_local_time(int *hour, int *minute)
     *minute = t.minute;
 }
 
+void sys_local_date(int *year, int *month, int *day)
+{
+    SceDateTime t;
+    sceRtcGetCurrentClockLocalTime(&t);
+    *year = t.year;
+    *month = t.month;
+    *day = t.day;
+}
+
 #else /* Compilación en PC */
 
 #include <time.h>
@@ -43,6 +52,15 @@ void sys_local_time(int *hour, int *minute)
     struct tm *t = localtime(&now);
     *hour = t->tm_hour;
     *minute = t->tm_min;
+}
+
+void sys_local_date(int *year, int *month, int *day)
+{
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    *year = t->tm_year + 1900;
+    *month = t->tm_mon + 1;
+    *day = t->tm_mday;
 }
 
 #endif

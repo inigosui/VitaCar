@@ -32,6 +32,7 @@ object VitaHub {
         private set
     private var weather: JSONObject? = null
     private var call: JSONObject? = null
+    private var agenda: JSONObject? = null
 
     /** Ejecuta las órdenes que llegan de la Vita (lo registra VitaService). */
     @Volatile
@@ -98,6 +99,7 @@ object VitaHub {
             routeLeft?.let(conn::sendJson)
             weather?.let(conn::sendJson)
             call?.let(conn::sendJson)
+            agenda?.let(conn::sendJson)
             if (audioActive) conn.sendJson(audioMsg())
         }
     }
@@ -175,6 +177,15 @@ object VitaHub {
 
     fun updateWeather(m: JSONObject) {
         synchronized(lock) { weather = m }
+        send(m)
+        notifyListeners()
+    }
+
+    /** Último tiempo recibido (con el pronóstico en "days"), para la pantalla Agenda del móvil. */
+    fun lastWeather(): JSONObject? = synchronized(lock) { weather }
+
+    fun updateAgenda(m: JSONObject) {
+        synchronized(lock) { agenda = m }
         send(m)
     }
 
