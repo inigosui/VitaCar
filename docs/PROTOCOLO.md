@@ -2,6 +2,10 @@
 
 TCP. El **móvil escucha** en el puerto `47474` y la **Vita se conecta**.
 
+El puente para iPhone (`esp32-bridge/`) habla este mismo protocolo en lugar del móvil, con
+`name` = `iPhone (ESP32)`: así la Vita sabe que no hay GPS, mapa, tiempo ni agenda. Crea su propia
+WiFi y la Vita lo encuentra en `192.168.4.1`. Contesta `tile_err` a todas las teselas.
+
 ## Descubrimiento
 
 UDP, también en el puerto `47474`. Todo es texto ASCII:

@@ -113,6 +113,8 @@ void phone_stop(void);
 /* Hilo principal, una vez por frame: copia el estado y sube texturas pendientes. */
 void phone_poll(SDL_Renderer *renderer);
 const PhoneState *phone_state(void);
+/* Conectado al puente ESP32 del iPhone: sin GPS, mapa, tiempo ni agenda nueva. */
+bool phone_is_bridge(void);
 SDL_Texture *phone_album_art(void);
 int phone_media_position_ms(void);
 /* Puntos de la ruta en Web Mercator normalizado (0..1): {x0, y0, x1, y1, ...}. Devuelve cuántos hay. */

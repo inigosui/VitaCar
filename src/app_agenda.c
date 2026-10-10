@@ -193,7 +193,8 @@ static void draw_forecast(App *app, float y, long today_num)
     }
     if (!day) {
         ui_text(FONT_SMALL, label, x + 16, y + 12, COL_TEXT_DIM, ALIGN_LEFT);
-        const char *why = !ps->weather_valid ? "Conecta el móvil para ver el tiempo"
+        const char *why = !ps->weather_valid && phone_is_bridge() ? "Pronóstico no disponible con iPhone"
+                        : !ps->weather_valid ? "Conecta el móvil para ver el tiempo"
                         : diff < 0 ? "Día pasado: sin pronóstico"
                         : "Aún sin pronóstico para ese día";
         ui_text_wrap(FONT_SMALL, why, x + 16, y + 38, w - 32, 2, COL_TEXT_DIM);

@@ -2,18 +2,26 @@
 
 <h1 align="center">VitaCar</h1>
 
-<p align="center">Convierte tu PS Vita en la pantalla del coche, al estilo CarPlay, conectada a tu móvil Android.</p>
+<p align="center">Convierte tu PS Vita en la pantalla del coche, al estilo CarPlay, conectada a tu móvil Android… <b>y ahora también a tu iPhone</b>.</p>
 
 <p align="center">
   <img src="docs/capturas/inicio.png" width="45%" alt="Pantalla de inicio">
   <img src="docs/capturas/mapas.png" width="45%" alt="Mapa con navegación">
   <img src="docs/capturas/musica.png" width="45%" alt="Música">
+  <img src="docs/capturas/agenda.png" width="45%" alt="Agenda">
   <img src="docs/capturas/mensajes.png" width="45%" alt="Mensajes">
+  <img src="docs/capturas/llamada.png" width="45%" alt="Llamada entrante">
 </p>
 
 VitaCar es una app homebrew para PS Vita y una app compañera para Android. El móvil envía a
 la Vita la música, los mensajes, las llamadas, el GPS, las indicaciones de navegación, el
 tiempo y tu agenda, y desde la Vita se controla todo con la pantalla táctil o los botones.
+
+> **Novedad en la 0.5.0: compatible con iPhone.** Con una placa ESP32 de unos 10 € que hace de
+> «reloj» para el iPhone, la Vita recibe los avisos, las llamadas entrantes y la música de
+> cualquier app (también Spotify), con los controles desde la Vita. Sin Mac, sin cuenta de
+> desarrollador y sin jailbreak. Hay cosas que con iPhone no funcionan (mapa, tiempo, portadas…):
+> todo explicado en **[VitaCar con iPhone](docs/IPHONE.md)**.
 
 > **Estado: en pruebas.** Ya se ha probado en una PS Vita y un móvil Android reales: la conexión
 > automática, la música, los controles y las indicaciones de Google Maps funcionan. Aún hay limitaciones conocidas
@@ -25,11 +33,14 @@ tiempo y tu agenda, y desde la Vita se controla todo con la pantalla táctil o l
 En [Releases](../../releases) están los instalables:
 
 ```
-VitaCar.vpk   -> para la PS Vita (instalar con VitaShell; requiere HENkaku/Ensō)
-VitaCar.apk   -> para el móvil Android (8.0 o superior)
+VitaCar.vpk                    -> para la PS Vita (instalar con VitaShell; requiere HENkaku/Ensō)
+VitaCar.apk                    -> para el móvil Android (8.0 o superior)
+VitaCar-puente-ESP32-0.1.bin   -> solo para iPhone: programa de la placa ESP32 (ver docs/IPHONE.md)
 ```
 
 ## Puesta en marcha
+
+Con **iPhone**, sigue la guía [VitaCar con iPhone](docs/IPHONE.md) en lugar de estos pasos.
 
 1. **Móvil:** instala `VitaCar.apk` (permite «instalar apps desconocidas»). Ábrela y concede
    todos los permisos de la lista. En Realme/Oppo/Xiaomi, sigue también la tarjeta de batería.
@@ -122,12 +133,14 @@ las zonas ya vistas funcionan después sin conexión.
 | Al cambiar el zoom, el mapa se ve gris un momento | Cada tesela se descarga en el móvil, viaja por WiFi y la Vita la descomprime y oscurece para el modo noche. Las zonas ya vistas se quedan y cargan al momento. |
 | El mapa no se puede mover con el dedo | Por ahora el mapa sigue tu posición y solo tiene zoom. Está previsto poder moverlo. |
 | La hora de llegada no coincide con la de Google Maps | VitaCar calcula su propia ruta con OSRM, que no tiene en cuenta el tráfico. |
-| La app es solo para Android | iOS no permite a otras apps leer las notificaciones ni controlar la música, así que no hay versión para iPhone. Un iPhone sí puede servir para compartir la WiFi (ver la puesta en marcha). |
+| Con iPhone no hay mapa, tiempo, portadas ni sonido por la Vita | iOS no deja a las apps leer avisos ni controlar la música; por eso el iPhone usa un puente ESP32 por Bluetooth, que no tiene internet ni GPS. Detalles en [VitaCar con iPhone](docs/IPHONE.md). |
+| Con iPhone, contestar llamadas desde la Vita no funciona | Todavía en pruebas. Contesta en el iPhone o con el manos libres del coche. |
 
 ## Próximamente
 
 - Mover el mapa con el dedo.
 - Mapa más fluido.
+- iPhone: módulo GPS en el puente (velocidad y posición) y mapa guardado en la tarjeta.
 
 ## Controles de la Vita
 
@@ -153,6 +166,15 @@ mkdir -p build && cd build && cmake .. && make      # build/VitaCar.vpk
 Con [vitacompanion](https://github.com/devnoname120/vitacompanion) en la consola:
 `cmake -DVITA_IP=192.168.x.x .. && make send` sube el ejecutable y relanza la app.
 
+### Puente ESP32 (iPhone)
+
+Con [PlatformIO](https://platformio.org):
+
+```sh
+cd esp32-bridge
+pio run -t upload        # compila y graba en la placa enchufada
+```
+
 ### Android
 
 ```sh
@@ -177,6 +199,8 @@ src/tiles.c          Teselas: memoria, tarjeta y móvil; modo noche
 src/ui.c, icons.c    Dibujo, texto con caché y recorte, iconos vectoriales
 src/third_party/     cJSON (MIT)
 companion-android/   App Android (Kotlin, sin dependencias externas)
+esp32-bridge/        Puente para iPhone (ESP32, PlatformIO): ANCS y AMS por Bluetooth, WiFi a la Vita
+docs/IPHONE.md       Guía del puente para iPhone
 docs/PROTOCOLO.md    Protocolo entre Vita y móvil
 tools/gen_logo.py    Logo de la app
 tools/gen_sce_sys.py Icono y LiveArea a partir del logo
@@ -187,7 +211,7 @@ tools/gen_sce_sys.py Icono y LiveArea a partir del logo
 Este proyecto se hace por y para la comunidad. Toda ayuda cuenta:
 
 - **¿Algo falla?** Abre un [issue de fallo](../../issues/new/choose) indicando modelo de Vita,
-  móvil y versión de Android.
+  móvil y versión de Android o iOS (con iPhone, di también qué placa ESP32 usas).
 - **¿Una idea?** Propón una mejora en [Issues](../../issues/new/choose).
 - **¿Quieres programar?** Los *pull requests* son bienvenidos.
 

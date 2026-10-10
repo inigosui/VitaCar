@@ -5,7 +5,7 @@
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 
-#define APP_VERSION   "0.4.0"
+#define APP_VERSION   "0.5.0"
 #define SCREEN_HOME   (-1)
 
 typedef enum {

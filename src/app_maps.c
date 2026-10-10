@@ -306,7 +306,8 @@ void maps_draw(App *app)
         ui_text(FONT_TITLE, buf, CONTENT_X + 68, SCREEN_H - 100, COL_TEXT, ALIGN_CENTER);
         ui_text(FONT_SMALL, "km/h", CONTENT_X + 68, SCREEN_H - 50, COL_TEXT_DIM, ALIGN_CENTER);
     } else {
-        const char *msg = ps->link == LINK_CONNECTED ? "Esperando la ubicación del móvil…"
+        const char *msg = phone_is_bridge() ? "Con iPhone no hay ubicación: el puente no tiene GPS"
+                        : ps->link == LINK_CONNECTED ? "Esperando la ubicación del móvil…"
                                                      : "Conecta el móvil para ver tu posición";
         float w = ui_text_width(FONT_BODY, msg) + 56;
         float x = CONTENT_X + (CONTENT_W - w) / 2;

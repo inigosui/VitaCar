@@ -41,7 +41,8 @@ void weather_draw(App *app)
     if (!ps->weather_valid) {
         icon_tile(ICON_WEATHER, cx, 190, 140, accent);
         ui_text(FONT_TITLE, "Tiempo", cx, 286, COL_TEXT, ALIGN_CENTER);
-        ui_text(FONT_BODY, ps->link == LINK_CONNECTED ? "Esperando datos del móvil…"
+        ui_text(FONT_BODY, phone_is_bridge() ? "No disponible con iPhone (el puente no tiene internet)."
+                         : ps->link == LINK_CONNECTED ? "Esperando datos del móvil…"
                                                       : "Conecta el móvil para ver el tiempo.",
                 cx, 338, COL_TEXT_DIM, ALIGN_CENTER);
         hint_bar("O  inicio");

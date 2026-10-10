@@ -665,6 +665,12 @@ void phone_poll(SDL_Renderer *renderer)
     }
 }
 
+bool phone_is_bridge(void)
+{
+    const PhoneState *ps = phone_state();
+    return ps->link == LINK_CONNECTED && strstr(ps->phone_name, "(ESP32)") != NULL;
+}
+
 const PhoneState *phone_state(void)
 {
     return &g_snap;
